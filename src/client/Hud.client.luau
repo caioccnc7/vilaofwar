@@ -326,7 +326,7 @@ local helpText = label(help, table.concat({
 	"Power Meter: medir sinal na casa ou na caixa",
 	"Fusão: emendar, refazer conector, instalar cliente",
 	"Notebook TI: clique; perto do rack digite console",
-	"T: conversar · M: tablet · J: wiki · P: provedor",
+	"T: falar · M: tablet · J: wiki · P: provedor · O: ERP",
 }, "\n"), { Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 1, -16), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = QUIET })
 new("UITextSizeConstraint", { MaxTextSize = 15, Parent = helpText })
 -- as dicas falam de teclas; no celular ficam escondidas (o canto é do controle de andar)

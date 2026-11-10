@@ -180,6 +180,7 @@ function Providers.open(player: Player, slot: number?, name: any): any
 		Providers.onOpen(P)
 	end
 	P.game.money = capital
+	P.game.record("receita", "Capital", "Capital inicial de " .. player.DisplayName, capital)
 	P.game.publish()
 	setPlayerSlot(player, slot)
 	publishTeam(P)
@@ -225,6 +226,7 @@ function Providers.invest(player: Player, amount: any)
 	end
 	player:SetAttribute("Wallet", wallet - amount)
 	P.game.money += amount
+	P.game.record("receita", "Capital", "Aporte de " .. player.DisplayName, amount)
 	P.game.publish()
 	Providers.notify(P, nil, string.format("%s aportou R$ %d no caixa do %s.", player.DisplayName, amount, P.name), "money")
 end

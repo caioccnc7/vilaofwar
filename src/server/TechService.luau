@@ -1,6 +1,7 @@
 -- Equipe de rua: técnicos NPC que o dono do provedor contrata (quantos quiser, até
--- Config.Tech.Max). Cada um resolve sozinho os reparos da rua (fibra rompida,
--- conector ruim, ONU queimada) usando o estoque, trabalha só de dia e recebe salário
+-- Config.Tech.Max). Cada um trabalha pela fila de ordens de serviço (OS) que recebe no
+-- ERP do celular: instala casas novas e atende chamados de reparo (fibra rompida,
+-- conector ruim, ONU queimada), usando o estoque. Trabalha só de dia e recebe salário
 -- diário. Demitir custa uma rescisão pelos dias que aquele técnico trabalhou.
 -- Se o carro da equipe estiver na garagem, o técnico vai de carro; se não, vai a pé.
 
@@ -23,6 +24,7 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 	local game_: any = P.game
 	local world: any = worldData
 	local isp = worldData.isps[P.slot]
+	local erp: any = P.erp -- ERP do provedor: a fila de OS de cada técnico
 	local Car = CarModule.new(P, worldData, netService)
 
 	Tech.team = {} -- técnicos contratados, na ordem de contratação
@@ -33,6 +35,8 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 		["break"] = "Emendando a fibra",
 		dirty = "Refazendo o conector",
 		onu = "Trocando a ONU",
+		install = "Instalando drop e ONU",
+		visit = "Verificando a instalação",
 	}
 
 	-- ---------------------------------------------------------------------------
@@ -334,19 +338,42 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 		return game_.hour >= T.WorkStartHour and game_.hour < T.WorkEndHour
 	end
 
-	local function pickJob(m: any): any
-		local best, bestScore = nil, math.huge
-		local here = if m.root then m.root.Position else isp.entrance
-		for _, job in net.streetJobs(P.slot) do
-			local owner = claims[job.key]
-			if owner == nil or owner == m or not owner.active then
-				local score = job.priority * 1000 + (flat(job.pos) - flat(here)).Magnitude
-				if score < bestScore then
-					best, bestScore = job, score
-				end
-			end
+	-- Próxima OS da fila do técnico no ERP, já com o serviço que ele vai fazer no local.
+	-- Reparo: ele procura o defeito físico do caminho (rompimento, ONU, conector). Se não
+	-- acha nada na rua, vai até a casa verificar e devolve a OS com o diagnóstico.
+	local function nextWork(m: any): (any, any)
+		if not erp then
+			return nil, nil
 		end
-		return best
+		for _, o in erp.queueOf(m.id) do
+			local h = net.houses[o.index]
+			if not h then
+				erp.cancel(o, "Casa não encontrada")
+				continue
+			end
+			local door = h.house.doorPoint
+			if o.kind == "instalacao" then
+				if h.contract == "active" then
+					if h.slot == P.slot then
+						erp.finish(o, "Casa já estava instalada")
+					else
+						erp.cancel(o, "Virou cliente do concorrente")
+					end
+					continue
+				end
+				return o, { kind = "install", key = "install:" .. o.index, index = o.index, pos = door, label = "instalação da casa " .. o.index, priority = 2, needs = { onu = 1, drop = 1 } }
+			end
+			local job = net.diagnose(o.index, P.slot)
+			if job then
+				local owner = claims[job.key]
+				if owner ~= nil and owner ~= m and owner.active then
+					continue -- outro técnico já está nesse defeito (ex.: tronco rompido)
+				end
+				return o, job
+			end
+			return o, { kind = "visit", key = "visit:" .. o.index, index = o.index, pos = door, label = "casa " .. o.index, priority = 3, needs = {} }
+		end
+		return nil, nil
 	end
 
 	local function hasStock(needs: { [string]: number }): (boolean, string)
@@ -375,6 +402,10 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 		while m.active do
 			if not workHours() then
 				if not m.atHome then
+					if erp then
+						erp.releaseTech(m.id)
+					end
+					m.osId = nil
 					say(m, "Fim do meu turno. Até amanhã!", 4)
 					returnCar(m)
 					setState(m, "Indo para casa descansar")
@@ -390,13 +421,14 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 				spawnAtWork(m)
 				m.atHome = false
 				setState(m, "Chegou para o turno")
-				say(m, "Bom dia! Se tiver problema na rua, eu resolvo.", 4)
+				say(m, "Bom dia! Vou ver a minha fila no ERP.", 4)
 			end
 
-			local job = pickJob(m)
-			if not job then
+			local order, job = nextWork(m)
+			if not order then
+				m.osId = nil
 				returnCar(m)
-				setState(m, "Esperando chamado na porta do provedor")
+				setState(m, "Sem OS na fila (olhando o ERP no celular)")
 				if m.root and (flat(m.root.Position) - flat(waitSpot(m))).Magnitude > 6 then
 					walkRoute(m, waitSpot(m))
 				end
@@ -406,10 +438,10 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 
 			local ok, missing = hasStock(job.needs)
 			if not ok then
-				setState(m, "Parado: sem " .. missing .. " no estoque")
+				setState(m, string.format("Parado na OS #%d: sem %s no estoque", order.id, missing))
 				if not m.warned[job.key] then
 					m.warned[job.key] = true
-					net.addAlarm(P.slot, "Técnico", m.name .. " não pode consertar " .. job.label .. ": falta " .. missing .. " no estoque", "warning")
+					net.addAlarm(P.slot, "Técnico", string.format("%s parado na OS #%d (%s): falta %s no estoque", m.name, order.id, job.label, missing), "warning")
 					say(m, "Sem " .. missing .. " no estoque. Compra pra mim?", 6)
 				end
 				task.wait(3)
@@ -417,29 +449,76 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 			end
 			m.warned[job.key] = nil
 			claims[job.key] = m
+			m.osId = order.id
+			erp.start(order, m)
 
-			say(m, "Vou lá ver " .. job.label .. ".", 4)
+			say(m, string.format("ERP: OS #%d, %s. Partiu!", order.id, job.label), 4)
 			goTo(m, job.pos, job.label)
 			if not m.active then
+				erp.release(order)
 				break
 			end
-			if not net.jobOpen(job) then
-				say(m, "Já resolveram aqui. Beleza!", 4)
+			if order.status ~= "execucao" then
+				-- a OS foi encerrada enquanto ele ia (jogador resolveu, cliente cancelou)
+				say(m, "O ERP diz que essa OS já foi encerrada. Beleza!", 4)
 				claims[job.key] = nil
+				m.osId = nil
 				continue
 			end
 			local verb = JobVerb[job.kind] or "Consertando"
-			setState(m, verb .. " (" .. job.label .. ")")
-			say(m, verb .. "...", T.RepairSeconds)
-			task.wait(T.RepairSeconds)
+			local seconds = if job.kind == "install" then T.InstallSeconds else T.RepairSeconds
+			setState(m, string.format("%s (OS #%d)", verb, order.id))
+			say(m, verb .. "...", seconds)
+			task.wait(seconds)
 			if not m.active then
+				erp.release(order)
 				break
 			end
-			if net.techFix(job, m.name, P) then
+			local h = net.houses[order.index]
+			if job.kind == "install" then
+				if h.contract ~= "active" and h.choice == P.slot then
+					if net.install(order.index, P, nil, m.name) then
+						m.jobsToday += 1
+						say(m, string.format("Casa %d instalada! Falta autorizar a ONU na OLT.", order.index), 6)
+					else
+						erp.release(order)
+					end
+				else
+					erp.cancel(order, "O morador desistiu na hora da instalação")
+					say(m, "O morador desistiu. OS cancelada.", 5)
+				end
+			elseif job.kind == "visit" then
+				if net.diagnose(order.index, P.slot) then
+					erp.release(order) -- apareceu um defeito na rua: volta para a fila
+				elseif h.status == "online" or h.status == "slow" then
+					erp.finish(order, "Visita: o cliente já estava com internet")
+					say(m, "Tá funcionando. OS encerrada.", 5)
+				else
+					local why = net.reasonText(order.index)
+					erp.finish(order, "Sem defeito na rua: " .. why .. ". Resolver no provedor (rack/OLT)")
+					net.addAlarm(P.slot, "Técnico", string.format("%s: casa %d sem defeito físico (%s). Resolva no rack ou na OLT", m.name, order.index, why), "warning")
+					say(m, "Na rua está tudo certo. O problema é no provedor: " .. why .. ".", 7)
+				end
+			elseif not net.jobOpen(job) then
+				if h and (h.status == "online" or h.status == "slow") then
+					erp.finish(order, "Já estava resolvido quando o técnico chegou")
+					say(m, "Já resolveram aqui. Beleza!", 4)
+				else
+					erp.release(order)
+				end
+			elseif net.techFix(job, m.name, P, order.id) then
 				m.jobsToday += 1
+				local note = if job.kind == "break" then "Fibra emendada: " .. job.label elseif job.kind == "dirty" then "Conector refeito" else string.format("ONU trocada. SN novo %s: autorizar na OLT", h.sn or "?")
+				erp.finish(order, note .. " (" .. m.name .. ")")
 				say(m, "Pronto! " .. job.label .. " resolvido.", 5)
+			else
+				erp.release(order)
 			end
 			claims[job.key] = nil
+			m.osId = nil
+		end
+		if erp then
+			erp.releaseTech(m.id)
 		end
 		unclaim(m)
 	end
@@ -479,6 +558,8 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 				jobsToday = m.jobsToday,
 				severance = severanceOf(m),
 				car = m.hasCar,
+				osId = m.osId,
+				queue = if erp then #erp.queueOf(m.id) else 0,
 				x = if p then p.X else nil,
 				z = if p then p.Z else nil,
 			})
@@ -507,7 +588,7 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 			Remotes.notify(player, "A equipe já está completa (" .. T.Max .. " técnicos).", "info")
 			return false
 		end
-		if not game_.spend(T.HireFee, "contratação: " .. name, player) then
+		if not game_.spend(T.HireFee, "contratação: " .. name, player, "Equipe") then
 			return false
 		end
 		nextId += 1
@@ -526,6 +607,9 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 		table.insert(Tech.team, m)
 		net.addAlarm(P.slot, "Equipe", string.format("%s contratado. Salário de R$ %d por dia (equipe: %d)", name, T.DailySalary, #Tech.team), "ok")
 		task.spawn(loop, m)
+		if erp then
+			erp.teamChanged()
+		end
 		return true
 	end
 
@@ -541,7 +625,7 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 		end
 		local m = Tech.team[index]
 		local cost = severanceOf(m)
-		if not game_.spend(cost, "rescisão: " .. m.name .. " (" .. m.daysWorked .. " dias)", player) then
+		if not game_.spend(cost, "rescisão: " .. m.name .. " (" .. m.daysWorked .. " dias)", player, "Equipe") then
 			return false
 		end
 		m.active = false
@@ -554,6 +638,9 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 			dropCar(m)
 		end
 		despawn(m)
+		if erp then
+			erp.teamChanged()
+		end
 		net.addAlarm(P.slot, "Equipe", m.name .. " demitido. Rescisão de R$ " .. cost, "warning")
 		return true
 	end
@@ -566,7 +653,7 @@ function TechModule.new(P: any, worldData: any, netService: any): any
 			m.jobsToday = 0
 			total += T.DailySalary
 		end
-		return total
+		return total, "Salários", string.format("Salário dos técnicos (%d)", #Tech.team)
 	end)
 
 	-- Provedor fechou: a equipe vai embora e o carro some

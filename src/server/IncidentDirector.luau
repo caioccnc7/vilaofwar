@@ -69,9 +69,11 @@ local function candidates()
 			table.insert(dirty, { weight = 1, value = id })
 		end
 	end
-	for id, n in net.graph.nodes do
-		if n.kind == "onu" and n.state == "ok" then
-			table.insert(onus, { weight = 1, value = id })
+	-- ONU só queima depois de Config.Onu.MinAgeDays dias de uso (desde a instalação ou a última troca)
+	for _, h in net.houses do
+		local n = h.onuId and net.graph.nodes[h.onuId]
+		if n and n.state == "ok" and net.onuCanFail(h) then
+			table.insert(onus, { weight = 1, value = h.onuId })
 		end
 	end
 	return cuts, dirty, onus

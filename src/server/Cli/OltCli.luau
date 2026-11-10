@@ -290,10 +290,34 @@ local function displayNode(extra: { any }): any
 	return { kw = list }
 end
 
+-- consultas de config: valem também nos modos usuário (>) e privilegiado (#), como na OLT real
+local cfgDisplay = displayNode({
+	K("current-configuration", "Display current configuration"),
+	K("ont", "ONT information", {
+		kw = {
+			K("autofind", "Display the automatically found ONTs", { kw = { K("all", "All ports") } }),
+			K("info", "Display ONT information", {
+				kw = { K("by-sn", "Query by SN", { arg = A("<sn>", "STRING<12-16> ONT serial number") }) },
+				arg = A("<frameid>", "INTEGER<0-0> Frame ID", {
+					arg = A("<slotid>", "INTEGER<0-17> Slot ID", {
+						arg = A("<portid>", "INTEGER<0-7> Port ID", {
+							kw = { K("all", "All ONTs") },
+							arg = A("<ontid>", "INTEGER<0-127> ONT ID", nil, { num = true }),
+						}, { num = true }),
+					}, { num = true }),
+				}, { num = true }),
+			}),
+		},
+	}),
+	K("ont-lineprofile", "ONT line profile", { kw = { K("gpon", "GPON", { kw = { K("all", "All profiles") } }) } }),
+	K("ont-srvprofile", "ONT service profile", { kw = { K("gpon", "GPON", { kw = { K("all", "All profiles") } }) } }),
+	K("service-port", "Service virtual port", { kw = { K("all", "All service virtual ports") }, arg = A("<index>", "INTEGER<0-65534> Index", nil, { num = true }) }),
+})
+
 local Tree = {}
 Tree.user = {
 	kw = {
-		K("display", "Display information", { kw = { K("version", "Display system version") } }),
+		K("display", "Display information", cfgDisplay),
 		K("enable", "Turn on privileged mode command"),
 		K("quit", "Exit from current mode and enter prior mode"),
 	},
@@ -301,35 +325,14 @@ Tree.user = {
 Tree.enable = {
 	kw = {
 		K("config", "Enter the configuration mode"),
-		K("display", "Display information", displayNode({})),
+		K("display", "Display information", cfgDisplay),
 		K("quit", "Exit from current mode and enter prior mode"),
 		K("save", "Save current configuration"),
 	},
 }
 Tree.config = {
 	kw = {
-		K("display", "Display information", displayNode({
-			K("current-configuration", "Display current configuration"),
-			K("ont", "ONT information", {
-				kw = {
-					K("autofind", "Display the automatically found ONTs", { kw = { K("all", "All ports") } }),
-					K("info", "Display ONT information", {
-						kw = { K("by-sn", "Query by SN", { arg = A("<sn>", "STRING<12-16> ONT serial number") }) },
-						arg = A("<frameid>", "INTEGER<0-0> Frame ID", {
-							arg = A("<slotid>", "INTEGER<0-17> Slot ID", {
-								arg = A("<portid>", "INTEGER<0-7> Port ID", {
-									kw = { K("all", "All ONTs") },
-									arg = A("<ontid>", "INTEGER<0-127> ONT ID", nil, { num = true }),
-								}, { num = true }),
-							}, { num = true }),
-						}, { num = true }),
-					}),
-				},
-			}),
-			K("ont-lineprofile", "ONT line profile", { kw = { K("gpon", "GPON", { kw = { K("all", "All profiles") } }) } }),
-			K("ont-srvprofile", "ONT service profile", { kw = { K("gpon", "GPON", { kw = { K("all", "All profiles") } }) } }),
-			K("service-port", "Service virtual port", { kw = { K("all", "All service virtual ports") }, arg = A("<index>", "INTEGER<0-65534> Index", nil, { num = true }) }),
-		})),
+		K("display", "Display information", cfgDisplay),
 		K("interface", "Enter an interface view", { kw = { K("gpon", "GPON interface", { arg = A("<frameid/slotid>", "Frame/Slot, ex.: 0/1", nil, { pattern = "^%d+/%d+$" }) }) } }),
 		K("quit", "Exit from current mode and enter prior mode"),
 		K("return", "Return to privileged mode"),
@@ -449,8 +452,24 @@ function OltCli.complete(_cfg: any, session: any, line: string): any
 end
 
 local HELP = {
-	user = "  enable                      Entrar no modo privilegiado\n  display version             Versão do sistema\n  quit                        Sair",
-	enable = "  config                      Entrar no modo de configuração\n  display board 0             Placas instaladas\n  display version\n  save                        Salvar configuração\n  quit",
+	user = table.concat({
+		"  display ont autofind all          ONUs novas aguardando autorização",
+		"  display ont info 0 1 <porta> all  ONUs cadastradas numa porta",
+		"  display service-port all          Serviços (VLAN) das ONUs",
+		"  display version                   Versão do sistema",
+		"  enable                            Entrar no modo privilegiado (para configurar)",
+		"  quit                              Sair",
+		"  Para autorizar ONU: enable, config, interface gpon 0/1",
+	}, "\n"),
+	enable = table.concat({
+		"  config                            Entrar no modo de configuração",
+		"  display ont autofind all          ONUs novas aguardando autorização",
+		"  display ont info 0 1 <porta> all  ONUs cadastradas numa porta",
+		"  display service-port all",
+		"  display board 0                   Placas instaladas",
+		"  save                              Salvar configuração",
+		"  quit",
+	}, "\n"),
 	config = table.concat({
 		"  interface gpon 0/1                         Entrar na placa GPON",
 		"  display ont autofind all                   ONUs novas aguardando autorização",
@@ -473,6 +492,125 @@ local HELP = {
 		"  quit",
 	}, "\n"),
 }
+
+-- consultas do modo config (também aceitas em > e #). nil = não é uma delas
+local function configDisplay(cfg: any, tokens: { string }, line: string, env: any): string?
+	local cmd = tokens[1]
+	if cmd == "display" and tokens[2] == "ont" and tokens[3] == "autofind" then
+		return autofindTable(env, nil)
+	elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "info" and tokens[4] ~= "by-sn" then
+		-- display ont info 0 1 <porta> all|<id>
+		local port = tonumber(tokens[6] or "")
+		if tokens[4] ~= "0" or tokens[5] ~= "1" or not port then
+			return "  % Parameter error. Ex.: display ont info 0 1 0 all"
+		end
+		return ontInfoTable(cfg, port, env, tonumber(tokens[7] or ""))
+	elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "info" and tokens[4] == "by-sn" then
+		local sn = string.upper(tokens[5] or "")
+		for port = 0, OltCli.Ports - 1 do
+			local id = OltCli.findOnt(cfg, port, sn)
+			if id then
+				local st = env.ontState(port, sn)
+				return table.concat({
+					DASH,
+					"  F/S/P                   : 0/1/" .. port,
+					"  ONT-ID                  : " .. id,
+					"  Control flag            : active",
+					"  Run state               : " .. st.run,
+					"  Config state            : " .. (if st.run == "online" then "normal" else "initial"),
+					"  Match state             : " .. (if st.run == "online" then "match" else "initial"),
+					"  SN                      : " .. sn,
+					"  Description             : " .. cfg.onts[port][id].desc,
+					"  Line profile ID         : " .. OltCli.LineProfile,
+					"  Service profile ID      : " .. OltCli.SrvProfile,
+					DASH,
+				}, "\n")
+			end
+		end
+		return "  Failure: The ONT does not exist"
+	elseif cmd == "display" and tokens[2] == "ont-srvprofile" then
+		return DASH .. "\n  Profile-ID  Profile-name                    Binding times\n" .. DASH .. "\n  10          FTTH-VILA-SRV                   -\n" .. DASH
+	elseif cmd == "display" and tokens[2] == "ont-lineprofile" then
+		return DASH .. "\n  Profile-ID  Profile-name                    Binding times\n" .. DASH .. "\n  10          FTTH-VILA                       " .. "-\n" .. DASH
+	elseif cmd == "display" and tokens[2] == "service-port" then
+		return servicePortTable(cfg)
+	elseif line == "display current-configuration" then
+		local out = { "  #", "  sysname " .. cfg.sysname, "  #", "  interface gpon 0/1" }
+		for port = 0, OltCli.Ports - 1 do
+			local list = cfg.onts[port]
+			if list then
+				local ids = {}
+				for id in list do
+					table.insert(ids, id)
+				end
+				table.sort(ids)
+				for _, id in ids do
+					table.insert(out, string.format("   ont add %d %d sn-auth \"%s\" omci ont-lineprofile-id 10 ont-srvprofile-id 10 desc \"%s\"", port, id, list[id].sn, list[id].desc))
+				end
+			end
+		end
+		table.insert(out, "  #")
+		for _, sp in cfg.servicePorts do
+			table.insert(out, string.format("  service-port %d vlan %d gpon 0/1/%d ont %d gemport %d multi-service user-vlan %d tag-transform translate", sp.index, sp.vlan, sp.port, sp.ont, sp.gemport, sp.userVlan))
+		end
+		table.insert(out, "  #\n  return")
+		return table.concat(out, "\n")
+	end
+	return nil
+end
+
+-- Comando certo no modo errado ("ont add" no >, "service-port" dentro da placa):
+-- em vez de só "Unknown command", diz em que modo ele roda e o caminho até lá
+local ModeName = {
+	user = "usuário (>)",
+	enable = "privilegiado (#)",
+	config = "configuração ((config)#)",
+	gpon = "placa GPON ((config-if-gpon-0/1)#)",
+}
+local ModeDepth = { user = 1, enable = 2, config = 3, gpon = 4 }
+local ModeStep = { "enable", "config", "interface gpon 0/1" }
+
+local function pathTo(from: string, to: string): string
+	local a, b = ModeDepth[from], ModeDepth[to]
+	local steps = {}
+	if b > a then
+		for i = a, b - 1 do
+			table.insert(steps, ModeStep[i])
+		end
+	else
+		if to == "enable" and a >= 3 then
+			return "return"
+		end
+		for _ = b, a - 1 do
+			table.insert(steps, "quit")
+		end
+	end
+	return table.concat(steps, ", ")
+end
+
+local function wrongMode(cfg: any, mode: string, raw: { string }): string?
+	if #raw == 0 then
+		return nil
+	end
+	for _, other in { "gpon", "config", "enable" } do
+		if other ~= mode and Tree[other] then
+			local _, _, bad = Complete.walk(Tree[other], raw)
+			if not bad then
+				return string.format(
+					"  %% Esse comando não existe no modo %s.\n  Ele roda no modo %s. Digite, um por linha: %s\n  (O prompt mostra o modo: %s> usuário, %s# privilegiado, %s(config)# configuração, %s(config-if-gpon-0/1)# placa.)",
+					ModeName[mode],
+					ModeName[other],
+					pathTo(mode, other),
+					cfg.sysname,
+					cfg.sysname,
+					cfg.sysname,
+					cfg.sysname
+				)
+			end
+		end
+	end
+	return nil
+end
 
 local runInner
 
@@ -508,7 +646,7 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 	local raw = Complete.tokens(line)
 	local _, full, bad, kind = Complete.walk(Tree[mode] or Tree.user, raw)
 	if bad then
-		return errAt(line, bad, kind)
+		return wrongMode(cfg, mode, raw) or errAt(line, bad, kind)
 	end
 	line = table.concat(full, " ")
 	local tokens = tokenize(line)
@@ -538,6 +676,27 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 		return "  { <cr>|configuration<K>|data<K> }:\n  Command:\n          save\n  The data of the configuration is saved successfully"
 	end
 
+	if (mode == "user" or mode == "enable") and cmd == "display" and tokens[2] ~= "board" then
+		return configDisplay(cfg, tokens, line, env) or err(tokens, 1)
+	end
+
+	if cmd == "display" and tokens[2] == "board" then
+		if tokens[3] ~= "0" then
+			return "  % Parameter error, the error locates at '^' (o chassi é o frame 0: display board 0)"
+		end
+		return table.concat({
+			DASH,
+			"  SlotID  BoardName  Status          SubType0 SubType1    Online/Offline",
+			DASH,
+			"  0",
+			"  1       H901GPHF   Normal",
+			"  2",
+			"  8       H901MPLA   Active_normal",
+			"  10      H901PILA   Normal",
+			DASH,
+		}, "\n")
+	end
+
 	if mode == "user" then
 		if cmd == "enable" then
 			session.mode = "enable"
@@ -546,22 +705,6 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 		return err(tokens, 1)
 	end
 
-	if mode ~= "user" and cmd == "display" and tokens[2] == "board" then
-		if tokens[3] ~= "0" then
-			return "  % Parameter error, the error locates at '^' (o chassi é o frame 0: display board 0)"
-		end
-			return table.concat({
-				DASH,
-				"  SlotID  BoardName  Status          SubType0 SubType1    Online/Offline",
-				DASH,
-				"  0",
-				"  1       H901GPHF   Normal",
-				"  2",
-				"  8       H901MPLA   Active_normal",
-				"  10      H901PILA   Normal",
-				DASH,
-			}, "\n")
-	end
 
 	if mode == "enable" then
 		if cmd == "config" then
@@ -581,44 +724,11 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 		elseif cmd == "sysname" and tokens[2] then
 			cfg.sysname = tokens[2]
 			return ""
-		elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "autofind" then
-			return autofindTable(env, nil)
-		elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "info" and tokens[4] ~= "by-sn" then
-			-- display ont info 0 1 <porta> all|<id>
-			local port = tonumber(tokens[6] or "")
-			if tokens[4] ~= "0" or tokens[5] ~= "1" or not port then
-				return "  % Parameter error. Ex.: display ont info 0 1 0 all"
+		elseif cmd == "display" then
+			local out = configDisplay(cfg, tokens, line, env)
+			if out then
+				return out
 			end
-			return ontInfoTable(cfg, port, env, tonumber(tokens[7] or ""))
-		elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "info" and tokens[4] == "by-sn" then
-			local sn = string.upper(tokens[5] or "")
-			for port = 0, OltCli.Ports - 1 do
-				local id = OltCli.findOnt(cfg, port, sn)
-				if id then
-					local st = env.ontState(port, sn)
-					return table.concat({
-						DASH,
-						"  F/S/P                   : 0/1/" .. port,
-						"  ONT-ID                  : " .. id,
-						"  Control flag            : active",
-						"  Run state               : " .. st.run,
-						"  Config state            : " .. (if st.run == "online" then "normal" else "initial"),
-						"  Match state             : " .. (if st.run == "online" then "match" else "initial"),
-						"  SN                      : " .. sn,
-						"  Description             : " .. cfg.onts[port][id].desc,
-						"  Line profile ID         : " .. OltCli.LineProfile,
-						"  Service profile ID      : " .. OltCli.SrvProfile,
-						DASH,
-					}, "\n")
-				end
-			end
-			return "  Failure: The ONT does not exist"
-		elseif cmd == "display" and tokens[2] == "ont-srvprofile" then
-			return DASH .. "\n  Profile-ID  Profile-name                    Binding times\n" .. DASH .. "\n  10          FTTH-VILA-SRV                   -\n" .. DASH
-		elseif cmd == "display" and tokens[2] == "ont-lineprofile" then
-			return DASH .. "\n  Profile-ID  Profile-name                    Binding times\n" .. DASH .. "\n  10          FTTH-VILA                       " .. "-\n" .. DASH
-		elseif cmd == "display" and tokens[2] == "service-port" then
-			return servicePortTable(cfg)
 		elseif cmd == "service-port" then
 			return servicePortCmd(cfg, tokens)
 		elseif cmd == "undo" and tokens[2] == "service-port" then
@@ -630,27 +740,6 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 				end
 			end
 			return "  Failure: The service virtual port does not exist"
-		elseif line == "display current-configuration" then
-			local out = { "  #", "  sysname " .. cfg.sysname, "  #", "  interface gpon 0/1" }
-			for port = 0, OltCli.Ports - 1 do
-				local list = cfg.onts[port]
-				if list then
-					local ids = {}
-					for id in list do
-						table.insert(ids, id)
-					end
-					table.sort(ids)
-					for _, id in ids do
-						table.insert(out, string.format("   ont add %d %d sn-auth \"%s\" omci ont-lineprofile-id 10 ont-srvprofile-id 10 desc \"%s\"", port, id, list[id].sn, list[id].desc))
-					end
-				end
-			end
-			table.insert(out, "  #")
-			for _, sp in cfg.servicePorts do
-				table.insert(out, string.format("  service-port %d vlan %d gpon 0/1/%d ont %d gemport %d multi-service user-vlan %d tag-transform translate", sp.index, sp.vlan, sp.port, sp.ont, sp.gemport, sp.userVlan))
-			end
-			table.insert(out, "  #\n  return")
-			return table.concat(out, "\n")
 		end
 		return err(tokens, 1)
 	end
@@ -761,7 +850,9 @@ function OltCli.banner(_cfg: any): string
 		"  Huawei Integrated Access Software (MA5800).",
 		"  Equipamento simulado para fins didáticos.",
 		"",
-		"  Digite ? em qualquer modo para ajuda.",
+		"  Digite ? ou help em qualquer modo para ajuda.",
+		"  Consultas (display ...) funcionam em qualquer modo.",
+		"  Para configurar: enable, depois config (e interface gpon 0/1 para as ONUs).",
 		"",
 	}, "\n")
 end

@@ -521,10 +521,33 @@ renderShop = function()
 				ShopBuy:FireServer("car_buy")
 			end)
 		end
+		-- atendente do balcão
+		local at = data.attendant
+		if at then
+			local atRow = rowFrame(nextOrder(), 96)
+			if at.hired then
+				rowText(atRow, at.name .. " · " .. at.state, string.format("Registra e agenda no ERP os pedidos de instalação e os chamados de reparo, das %dh às %dh. Agendou %d hoje. Salário R$ %d por dia.", at.workStart, at.workEnd, at.done, at.salary))
+				local confirming = confirmFire == "att"
+				rowButton(atRow, if confirming then "Confirmar demissão" else "Demitir R$ " .. at.severance, data.money >= at.severance, function()
+					if confirmFire ~= "att" then
+						confirmFire = "att"
+						renderShop()
+						return
+					end
+					confirmFire = false
+					ShopBuy:FireServer("att_fire")
+				end)
+			else
+				rowText(atRow, "Contratar " .. at.name, string.format("Atendente do escritório: fica no balcão da recepção, registra os pedidos de instalação e os chamados e agenda tudo no ERP para os técnicos. Das %dh às %dh. Salário R$ %d por dia.", at.workStart, at.workEnd, at.salary))
+				rowButton(atRow, "Contratar R$ " .. at.hireFee, data.money >= at.hireFee, function()
+					ShopBuy:FireServer("att_hire")
+				end)
+			end
+		end
 		-- contratar
 		local hireRow = rowFrame(nextOrder(), 96)
 		if tk.canHire then
-			rowText(hireRow, "Contratar " .. tk.nextName, string.format("Técnico de rua: emenda fibra, refaz conector e troca ONU, gastando o estoque. Trabalha das %dh às %dh. Salário R$ %d por dia. Equipe atual: %d de %d.", tk.workStart, tk.workEnd, tk.salary, #tk.team, tk.max))
+			rowText(hireRow, "Contratar " .. tk.nextName, string.format("Técnico de rua: faz as OS da fila dele no ERP (instalações e reparos), gastando o estoque. Trabalha das %dh às %dh. Salário R$ %d por dia. Equipe atual: %d de %d.", tk.workStart, tk.workEnd, tk.salary, #tk.team, tk.max))
 			rowButton(hireRow, "Contratar R$ " .. tk.hireFee, data.money >= tk.hireFee, function()
 				ShopBuy:FireServer("tech_hire")
 			end)
@@ -535,7 +558,7 @@ renderShop = function()
 		-- equipe atual
 		for _, m in tk.team do
 			local row = rowFrame(nextOrder(), 72)
-			rowText(row, m.name .. (if m.car then " · com o carro" else ""), string.format("%s\nTrabalhou %d dia(s) · consertos hoje: %d", m.state, m.daysWorked, m.jobsToday))
+			rowText(row, m.name .. (if m.car then " · com o carro" else ""), string.format("%s\nTrabalhou %d dia(s) · OS feitas hoje: %d", m.state, m.daysWorked, m.jobsToday))
 			local confirming = confirmFire == m.id
 			rowButton(row, if confirming then "Confirmar demissão" else "Demitir R$ " .. m.severance, data.money >= m.severance, function()
 				if confirmFire ~= m.id then
@@ -897,7 +920,7 @@ local function renderHouse()
 	else
 		local h4, ok4 = toolHint(HouseActs.install, "Liga o cliente · gasta 1 ONU e 1 fibra drop")
 		if ok4 and not d.canInstall then
-			h4 = "O morador ainda não quer o seu plano"
+			h4 = "Sem OS de instalação no ERP (o morador pede na recepção)"
 		end
 		setButton(hbtn.install, "Instalar internet", h4, ok4 and d.canInstall and not busy)
 	end

@@ -325,6 +325,17 @@ local function connectHouse(h: any, P: any)
 	h.slot = P.slot
 	h.price = P.price
 	h.sn = Net.newSn()
+	h.onuDay = game_.day -- a ONU só pode queimar depois de Config.Onu.MinAgeDays dias
+end
+
+-- A ONU desta casa já tem idade para queimar? (Config.Onu.MinAgeDays desde a instalação ou troca)
+function Net.onuCanFail(h: any): boolean
+	return h.onuId ~= nil and game_.day - (h.onuDay or game_.day) >= Config.Onu.MinAgeDays
+end
+
+-- Dias de uso da ONU da casa (0 no dia da instalação)
+function Net.onuAge(h: any): number
+	return if h.onuId then game_.day - (h.onuDay or game_.day) else 0
 end
 
 local function disconnectHouse(h: any)
@@ -466,7 +477,7 @@ local function spliceAt(edgeId: string, player: Player)
 		Remotes.notify(player, "Esse cabo é do provedor " .. (if other then other.name else "concorrente") .. ".", "error")
 		return
 	end
-	if not P.game.useStock({ emenda = 1 }, player) then
+	if not P.game.useStock({ emenda = 1 }, player, "Emenda: " .. edge.label .. " (" .. player.DisplayName .. ")") then
 		return
 	end
 	Net.graph:setEdgeState(edgeId, "ok")
@@ -531,8 +542,9 @@ function Net.jobOpen(job: any): boolean
 	return e ~= nil and e.state == "dirty"
 end
 
-function Net.techFix(job: any, who: string, P: any): boolean
-	if not Net.jobOpen(job) or not P.game.useStock(job.needs, nil) then
+function Net.techFix(job: any, who: string, P: any, osId: number?): boolean
+	local ref = if osId then " · OS #" .. osId else ""
+	if not Net.jobOpen(job) or not P.game.useStock(job.needs, nil, job.label .. " (" .. who .. ref .. ")") then
 		return false
 	end
 	local slot = P.slot
@@ -554,11 +566,70 @@ function Net.techFix(job: any, who: string, P: any): boolean
 		local h = Net.houses[job.index]
 		Net.graph:setNodeState(h.onuId, "ok")
 		h.sn = Net.newSn()
+		h.onuDay = game_.day
 		-- a parte da rua está feita; autorizar o SN novo na OLT continua com a equipe
 		Net.addAlarm(slot, "Reparo", string.format("%s trocou a ONU da casa %d. SN novo %s: autorize na OLT (ont modify %d <id> sn %s)", who, job.index, h.sn, Net.ponPortOf(h), h.sn), "warning")
 	end
 	P.game.count("repairs")
 	return true
+end
+
+-- O técnico chega na casa de um chamado e procura o defeito físico: rompimento no
+-- caminho até a OLT do provedor, ONU queimada ou conector atenuado. Devolve o serviço
+-- (mesmo formato de Net.streetJobs) ou nil quando o problema não é da rua.
+function Net.diagnose(index: number, slot: number): any
+	local h = Net.houses[index]
+	if not h or h.contract ~= "active" or h.slot ~= slot or not h.onuId then
+		return nil
+	end
+	local node = Net.graph.nodes[h.onuId]
+	if not node then
+		return nil
+	end
+	local door = h.house.doorPoint
+	local dirty = nil
+	local current = node
+	local guard = 0
+	while current and current.kind ~= "olt" and guard < 32 do
+		guard += 1
+		local pe = NetworkGraph.parentEdgeOf(current, slot)
+		local e = pe and Net.graph.edges[pe]
+		if not e then
+			break
+		end
+		if e.state == "broken" and breaks[pe] then
+			return { kind = "break", key = "break:" .. pe, edgeId = pe, pos = breaks[pe].Position, label = e.label, priority = if e.kind == "drop" then 2 else 1, needs = { emenda = 1 } }
+		elseif e.state == "dirty" and pe == h.edgeId then
+			dirty = { kind = "dirty", key = "dirty:" .. index, index = index, pos = door, label = "conector da casa " .. index, priority = 3, needs = { conector = 1 } }
+		end
+		current = Net.graph.nodes[e.from]
+	end
+	if node.state == "failed" then
+		return { kind = "onu", key = "onu:" .. index, index = index, pos = door, label = "ONU da casa " .. index, priority = 2, needs = { onu = 1 } }
+	end
+	return dirty
+end
+
+-- Motivo, em palavras, de uma casa estar sem internet (para a nota da OS)
+function Net.reasonText(index: number): string
+	local h = Net.houses[index]
+	if not h then
+		return "?"
+	end
+	if h.status == "online" or h.status == "slow" then
+		return "cliente normalizado"
+	end
+	local AlarmTextLocal = {
+		power = "equipamento do rack sem energia",
+		noroute = "sem rota para a internet (roteador)",
+		dns = "falha de DNS (roteador)",
+		unauth = "ONT não autorizada na OLT",
+		noservice = "ONT sem service-port na OLT",
+		olt = "OLT fora do ar",
+		los = "sem luz da OLT",
+		lowsignal = "sinal muito baixo",
+	}
+	return AlarmTextLocal[h.reason] or (Config.StatusLabels[h.status] or h.status)
 end
 
 function Net.breakEdge(edgeId: string)
@@ -643,7 +714,12 @@ local function houseMenuData(h: any, player: Player): any
 	else
 		local choice = h.choice and Providers.slots[h.choice]
 		if choice and P and h.choice == P.slot then
-			sub = string.format("Quer internet com você · R$ %d por dia", P.price)
+			local order = P.erp and P.erp.openInstallFor(index)
+			if order then
+				sub = string.format("OS #%d de instalação (%s) · R$ %d por dia", order.id, P.erp.statusText(order), P.price)
+			else
+				sub = string.format("Quer internet com você (R$ %d por dia), mas ainda não pediu na recepção", P.price)
+			end
 		elseif choice then
 			sub = string.format("Prefere o %s (R$ %d por dia)", choice.name, choice.price)
 		else
@@ -659,7 +735,7 @@ local function houseMenuData(h: any, player: Player): any
 		stateText = if rival then "Cliente do concorrente" else (Config.StatusLabels[status] or status),
 		active = active,
 		mine = mine,
-		canInstall = not active and P ~= nil and h.choice == P.slot,
+		canInstall = not active and P ~= nil and h.choice == P.slot and P.erp ~= nil and P.erp.openInstallFor(index) ~= nil,
 		pos = h.house.box.Position,
 	}
 end
@@ -678,6 +754,31 @@ Players.PlayerRemoving:Connect(function(player)
 	houseViewers[player] = nil
 	houseMenuKey[player] = nil
 end)
+
+-- Instala a casa (drop + ONU) para o provedor P. Usado pelo jogador (Máquina de Fusão)
+-- e pelo técnico NPC (ordem de serviço do ERP). Gasta 1 ONU e 1 drop do estoque.
+function Net.install(index: number, P: any, player: Player?, who: string): boolean
+	local h = Net.houses[index]
+	if not h or h.contract == "active" then
+		return false
+	end
+	local order = P.erp and P.erp.openInstallFor(index)
+	local ref = if order then " · OS #" .. order.id else ""
+	if not P.game.useStock({ onu = 1, drop = 1 }, player, "Instalação da casa " .. index .. " (" .. who .. ref .. ")") then
+		return false
+	end
+	connectHouse(h, P)
+	P.game.earn(Config.InstallFee, "Taxa de instalação da casa " .. index, player, "Instalações")
+	P.game.count("installs")
+	Net.addAlarm(P.slot, "Instalação", string.format("Casa %d instalada por %s. SN %s: falta ativar na OLT (porta %d), pelo ERP ou pelo terminal", index, who, h.sn, Net.ponPortOf(h)), "ok")
+	if P.erp then
+		P.erp.installed(index, who, h.sn)
+	end
+	if Net.onInstalled then
+		Net.onInstalled(index)
+	end
+	return true
+end
 
 local function setupHousePrompts(h: any)
 	local box = h.house.box
@@ -723,16 +824,20 @@ local function setupHousePrompts(h: any)
 			return
 		end
 		local P = mine(player)
-		if not P or not P.game.useStock({ onu = 1 }, player) then
+		if not P or not P.game.useStock({ onu = 1 }, player, "Troca de ONU da casa " .. index .. " (" .. player.DisplayName .. ")") then
 			return
 		end
 		local node = Net.graph.nodes[h.onuId]
 		local wasBroken = node.state == "failed"
 		Net.graph:setNodeState(h.onuId, "ok")
 		h.sn = Net.newSn()
+		h.onuDay = game_.day
 		if wasBroken then
 			P.game.count("repairs")
 			Net.addAlarm(P.slot, "Reparo", "ONU " .. index .. " trocada (SN " .. h.sn .. ")", "ok")
+			if P.erp then
+				P.erp.fieldWork(index, "ONU trocada por " .. player.DisplayName .. ". SN novo " .. h.sn .. ": autorizar na OLT")
+			end
 		end
 		Remotes.notify(player, string.format("ONU nova instalada, SN %s. Autorize na OLT: interface gpon 0/1, ont modify %d <id> sn %s (ou ont add).", h.sn, Net.ponPortOf(h), h.sn), "measure")
 		if not wasBroken then
@@ -745,13 +850,16 @@ local function setupHousePrompts(h: any)
 			return
 		end
 		local P = mine(player)
-		if not P or not P.game.useStock({ conector = 1 }, player) then
+		if not P or not P.game.useStock({ conector = 1 }, player, "Conector da casa " .. index .. " (" .. player.DisplayName .. ")") then
 			return
 		end
 		local edge = Net.graph.edges[h.edgeId]
 		if edge and edge.state == "dirty" then
 			Net.graph:setEdgeState(h.edgeId, "ok")
 			refreshEdgeVisual(h.edgeId)
+			if P.erp then
+				P.erp.fieldWork(index, "Conector refeito por " .. player.DisplayName)
+			end
 			P.game.count("repairs")
 			Net.addAlarm(P.slot, "Reparo", "Conector da casa " .. index .. " refeito", "ok")
 			Remotes.notify(player, "Conector limpo e refeito. Meça o sinal de novo.", "success")
@@ -778,16 +886,14 @@ local function setupHousePrompts(h: any)
 			end
 			return
 		end
-		if not P.game.useStock({ onu = 1, drop = 1 }, player) then
+		-- a instalação só acontece com ordem de serviço aberta no ERP (o morador pede na recepção)
+		local order = P.erp and P.erp.openInstallFor(index)
+		if not order then
+			Remotes.notify(player, string.format("%s: não tem ordem de serviço de instalação no ERP. O morador precisa ir até a recepção pedir a internet.", label), "error")
 			return
 		end
-		connectHouse(h, P)
-		P.game.earn(Config.InstallFee, "taxa de instalação", player)
-		Remotes.notify(player, string.format("Drop e ONU instalados (SN %s), contrato de R$ %d por dia. Agora autorize na OLT: display ont autofind all, depois ont add %d sn-auth %s ... e o service-port.", h.sn, h.price, Net.ponPortOf(h), h.sn), "measure")
-		P.game.count("installs")
-		Net.addAlarm(P.slot, "Instalação", "Casa " .. index .. " ativada", "ok")
-		if Net.onInstalled then
-			Net.onInstalled(index)
+		if Net.install(index, P, player, player.DisplayName) then
+			Remotes.notify(player, string.format("Drop e ONU instalados (SN %s), contrato de R$ %d por dia. Falta ativar na OLT: no ERP (aba Ordens de serviço) ou no terminal (enable, config, interface gpon 0/1, ont add %d sn-auth %s ... e o service-port).", h.sn, h.price, Net.ponPortOf(h), h.sn), "measure")
 		end
 	end
 

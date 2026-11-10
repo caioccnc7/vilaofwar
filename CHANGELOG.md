@@ -4,6 +4,13 @@ Tudo o que entrou no jogo, do mais novo para o mais antigo. É o mesmo conteúdo
 
 ## 10/11/2026
 
+- OLT: consultas (display ont autofind, display ont info 0 1 <porta> all, display service-port...) funcionam em qualquer modo. Comando digitado no modo errado agora explica em que modo ele roda e o caminho até lá. Wiki com o prompt real (MA5800-X7).
+- Ativação pelo ERP: com a OLT configurada (primeiro cliente ativado à mão), as casas instaladas aparecem em Ativação na OLT. O botão Ativar ou a atendente fazem o ont add e o service-port.
+- ERP do provedor (tecla O, botão ERP ou computador da recepção): ordens de serviço, agenda e fila de cada técnico, receitas e despesas com extrato, e estoque com mínimo e movimentação.
+- Instalações pedidas pelos moradores: quem escolheu o seu provedor vai ao balcão da recepção pedir a internet. Sem OS de instalação, não dá para instalar.
+- Chamados viram OS de reparo. Os técnicos só trabalham com OS agendada: instalam casas novas e procuram o defeito na rua; se a rua está boa, avisam que o problema é no rack ou na OLT.
+- Atendente do escritório contratável (R$ 120 por dia): registra e agenda as OS sozinha no expediente.
+- ONU só queima depois de 5 dias de uso, contados da instalação ou da última troca.
 - Caixa da casa organizada: um aviso só (Opções, E) abre um painel com o estado da casa e as ações por tecla: medir sinal (E), refazer conector (F), trocar ONU (R) ou instalar internet (E). Os avisos não ficam mais um em cima do outro.
 - Wiki junto com o console: F1 ou o botão Wiki do console abre a wiki num painel ao lado, na página do equipamento em uso. Clique num comando da wiki para mandá-lo à linha do console.
 - Mundo aberto: cada jogador chega com R$ 12000 e escolhe (tecla P) abrir o seu provedor ou entrar como sócio de outro, aportando o próprio dinheiro.

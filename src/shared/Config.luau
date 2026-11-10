@@ -64,11 +64,39 @@ Config.Tech = {
 	WorkStartHour = 8, -- começa a trabalhar
 	WorkEndHour = 18, -- depois disso vai para casa descansar
 	RepairSeconds = 8, -- tempo de serviço no local
+	InstallSeconds = 12, -- tempo para instalar o drop e a ONU numa casa nova
 	WalkSpeed = 15,
 	Max = 8, -- tamanho máximo da equipe (limite para o servidor não pesar)
 	-- nomes da equipe, na ordem de contratação
 	Names = { "Técnico Bento", "Técnica Rita", "Técnico Joca", "Técnica Lúcia", "Técnico Davi", "Técnica Nara", "Técnico Caetano", "Técnica Irene" },
 	CarMinDistance = 90, -- abaixo disso o técnico vai a pé mesmo com o carro na garagem
+}
+
+-- Atendente do escritório (NPC contratado). Fica no balcão da recepção, registra os
+-- pedidos de instalação e os chamados de reparo e agenda tudo no ERP para os técnicos.
+Config.Attendant = {
+	Name = "Atendente Sofia",
+	HireFee = 200, -- uniforme e treinamento no ERP
+	DailySalary = 120, -- pago no fechamento de cada dia em que estiver contratada
+	SeverancePerDay = 60, -- rescisão: este valor vezes os dias trabalhados
+	SeveranceMin = 120,
+	WorkStartHour = 8,
+	WorkEndHour = 18,
+	ScheduleSeconds = 6, -- tempo para registrar e agendar cada ordem de serviço
+	ActivateSeconds = 8, -- tempo para ativar na OLT um cliente já instalado (ont add + service-port)
+}
+
+-- ERP do provedor: ordens de serviço, agenda dos técnicos, receitas, despesas e estoque
+Config.Erp = {
+	MinStock = { onu = 2, drop = 2, emenda = 2, conector = 2 }, -- abaixo disso o ERP avisa
+	RequestEvery = { 10, 70 }, -- segundos até o morador ir pedir instalação depois de escolher o provedor
+	KeepClosed = 12, -- ordens concluídas ou canceladas que ficam na lista
+	LedgerSize = 40, -- lançamentos guardados no extrato
+}
+
+-- ONU: só pode queimar depois de alguns dias de uso (conta da instalação ou da última troca)
+Config.Onu = {
+	MinAgeDays = 5,
 }
 
 -- Carro da equipe: comprado uma vez no terminal de compras (aba Equipe).

@@ -35,6 +35,8 @@ Remotes.RackMenu = event("RackMenu") -- servidor -> cliente: abre/atualiza o men
 Remotes.RackAction = event("RackAction") -- cliente -> servidor: ação escolhida no menu do equipamento
 Remotes.HouseMenu = event("HouseMenu") -- servidor -> cliente: abre/atualiza o menu da caixa da casa (nil fecha)
 Remotes.HouseAction = event("HouseAction") -- cliente -> servidor: ação escolhida no menu da caixa da casa
+Remotes.ErpOpen = event("ErpOpen") -- servidor -> cliente: abre/atualiza a tela do ERP (nil fecha)
+Remotes.ErpAction = event("ErpAction") -- cliente -> servidor: abrir, agendar, comprar, contratar...
 
 local fn = folder:FindFirstChild("ConsoleCommand")
 if not fn then

@@ -38,14 +38,16 @@ Convenção de nomes:
 | --- | --- |
 | `WorldBuilder` (mapa) | `Game.newProvider(P)`: caixa, estoque, crédito, SLA, fase |
 | `NetworkService` (rua, casas, grafo) | `RackModule.new(P, world, net)`: rack, loja, ficha do link, PCs do NOC |
-| `ResidentService` (moradores) | `TechModule.new(P, world, net)`: técnicos (cria o `CarModule.new`) |
+| `ResidentService` (moradores) | `ErpModule.new(P, world, net)`: ordens de serviço, atendente, computador da recepção, tela do ERP |
+| | `TechModule.new(P, world, net)`: técnicos pela fila do ERP (cria o `CarModule.new`) |
 | `IncidentDirector` | |
 | `GameService` (relógio da cidade) | |
 | `Providers` (cadastro) | |
 
 O provedor `P` é uma tabela `{ id, slot, name, price, owner, partners, isp, folder, game, rack, tech }`. `slot` é o prédio (1 ou 2).
 
-- `Providers.onOpen` (no Main) cria `P.game`, `P.rack` e `P.tech`.
+- `Providers.onOpen` (no Main) cria `P.game`, `P.rack`, `P.erp` e `P.tech` (o ERP antes da equipe, porque os técnicos leem a fila dele).
+- O extrato (receitas e despesas por categoria) e a movimentação do estoque ficam no `game` do provedor: `g.record`, `g.ledger`, `g.daily`, `g.moves`. `spend`/`earn` recebem a categoria.
 - `Providers.onClose` desliga as casas do provedor e chama `destroy()` no rack e na equipe. O rack cria tudo numa pasta `RackDoProvedor` dentro do prédio, então fechar não deixa lixo.
 
 Os Remotes do console, da loja e do rack são únicos para o jogo inteiro. `RackModule.start()` encaminha cada pedido para o rack de `Providers.of(player)`.
@@ -88,6 +90,7 @@ Os Remotes do console, da loja e do rack são únicos para o jogo inteiro. `Rack
 | `RackMenu` / `RackAction` | ambos | menu Opções do equipamento |
 | `ConsoleOpen`, `ConsoleCommand`, `ConsoleComplete` | ambos | consoles (linha digitada e TAB) |
 | `WikiOpen` | servidor → cliente | quiosque da wiki |
+| `ErpOpen` / `ErpAction` | ambos | tela do ERP (abrir, agendar, cancelar, abrir OS, comprar, contratar) |
 
 ## Onde mexer
 

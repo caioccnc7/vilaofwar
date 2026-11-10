@@ -75,6 +75,47 @@ function Game.newProvider(P: any): any
 	local penaltyAcc = 0
 	local folder = P.folder
 
+	-- ERP: extrato (receitas e despesas) e movimentação do estoque
+	g.ledger = {} :: { any } -- lançamentos, mais novo primeiro
+	g.daily = {} :: { [number]: any } -- [dia] = { receita = { [categoria] = R$ }, despesa = {...} }
+	g.moves = {} :: { any } -- entradas e saídas do estoque, mais novo primeiro
+	g.usedToday = {} :: { [string]: number }
+	local lowWarned = {} :: { [string]: boolean }
+
+	local function dayTotals(day: number): any
+		local d = g.daily[day]
+		if not d then
+			d = { receita = {}, despesa = {} }
+			g.daily[day] = d
+			g.daily[day - 3] = nil -- guarda só os últimos dias
+		end
+		return d
+	end
+
+	-- Registra um lançamento no extrato do ERP. kind: "receita" ou "despesa".
+	-- line = false soma no total do dia sem criar linha no extrato.
+	function g.record(kind: string, category: string, desc: string, amount: number, line: boolean?)
+		amount = math.floor(amount + 0.5)
+		if amount <= 0 then
+			return
+		end
+		local d = dayTotals(Game.day)
+		d[kind][category] = (d[kind][category] or 0) + amount
+		if line ~= false then
+			table.insert(g.ledger, 1, { day = Game.day, time = Game.clockText(), kind = kind, category = category, desc = desc, amount = amount })
+			if #g.ledger > Config.Erp.LedgerSize then
+				table.remove(g.ledger)
+			end
+		end
+	end
+
+	local function move(kind: string, delta: number, reason: string)
+		table.insert(g.moves, 1, { day = Game.day, time = Game.clockText(), kind = kind, delta = delta, reason = reason, after = g.stock[kind] or 0 })
+		if #g.moves > 30 then
+			table.remove(g.moves)
+		end
+	end
+
 	local function publish()
 		folder:SetAttribute("Money", math.floor(g.money))
 		folder:SetAttribute("Reputation", g.reputation)
@@ -96,31 +137,37 @@ function Game.newProvider(P: any): any
 		Providers.notify(P, player, text, kind)
 	end
 
-	function g.spend(amount: number, reason: string, player: Player?): boolean
+	function g.spend(amount: number, reason: string, player: Player?, category: string?): boolean
 		if g.money < amount then
 			g.notify(player, string.format("Caixa sem dinheiro para %s (R$ %d).", reason, amount), "error")
 			return false
 		end
 		g.money -= amount
 		stats.costs += amount
+		g.record("despesa", category or "Compras", reason, amount)
 		publish()
 		g.notify(player, string.format("-R$ %d · %s", amount, reason), "money")
 		return true
 	end
 
-	function g.earn(amount: number, reason: string, player: Player?)
+	function g.earn(amount: number, reason: string, player: Player?, category: string?)
 		g.money += amount
 		stats.revenue += amount
+		g.record("receita", category or "Serviços", reason, amount)
 		publish()
 		g.notify(player, string.format("+R$ %d · %s", amount, reason), "money")
 	end
 
-	function g.addStock(kind: string, units: number)
+	function g.addStock(kind: string, units: number, reason: string?)
 		g.stock[kind] = (g.stock[kind] or 0) + units
+		if (g.stock[kind] or 0) >= (Config.Erp.MinStock[kind] or 0) then
+			lowWarned[kind] = nil
+		end
+		move(kind, units, reason or "Entrada")
 		publish()
 	end
 
-	function g.useStock(needs: { [string]: number }, player: Player?): boolean
+	function g.useStock(needs: { [string]: number }, player: Player?, reason: string?): boolean
 		for kind, n in needs do
 			if (g.stock[kind] or 0) < n then
 				local s = Config.Supplies[kind]
@@ -130,6 +177,15 @@ function Game.newProvider(P: any): any
 		end
 		for kind, n in needs do
 			g.stock[kind] -= n
+			g.usedToday[kind] = (g.usedToday[kind] or 0) + n
+			move(kind, -n, reason or "Uso")
+			-- estoque abaixo do mínimo: o ERP avisa uma vez
+			local min = Config.Erp.MinStock[kind] or 0
+			if g.stock[kind] < min and not lowWarned[kind] then
+				lowWarned[kind] = true
+				local s = Config.Supplies[kind]
+				net.addAlarm(P.slot, "Estoque", string.format("%s abaixo do mínimo: %d em estoque (mínimo %d). Compre pelo ERP ou no terminal", if s then s.name else kind, g.stock[kind], min), "warning")
+			end
 		end
 		publish()
 		return true
@@ -164,6 +220,7 @@ function Game.newProvider(P: any): any
 		loansToday += 1
 		g.debt += st.repay
 		g.money += st.amount
+		g.record("receita", "Empréstimo", Config.GovLoan.Name .. " (devolve R$ " .. st.repay .. ")", st.amount)
 		publish()
 		g.notify(nil, string.format("Crédito do governo liberado: +R$ %d. Devolve R$ %d em parcelas de R$ %d por dia.", st.amount, st.repay, st.daily), "money")
 		return true
@@ -230,16 +287,26 @@ function Game.newProvider(P: any): any
 		g.money += fees - upstreamCost
 		stats.revenue += fees
 		stats.costs += upstreamCost
+		g.record("receita", "Mensalidades", string.format("Mensalidades do dia (%d clientes)", active), fees)
+		g.record("despesa", "Link da operadora", string.format("Link de %d Mbps", net.slot(P.slot).upstreamMbps), upstreamCost)
 		local loanPayment = math.min(g.debt, Config.GovLoan.DailyPayment)
 		g.money -= loanPayment
 		g.debt -= loanPayment
+		g.record("despesa", "Empréstimo", "Parcela do " .. Config.GovLoan.Name, loanPayment)
 		loansToday = 0
 		local staffCost = 0
 		for _, fn in g.dailyCosts do
-			staffCost += fn()
+			local amount, category, desc = fn()
+			staffCost += amount
+			g.record("despesa", category or "Equipe", desc or category or "Custo diário", amount)
 		end
 		g.money -= staffCost
 		stats.costs += staffCost
+		if stats.penalties >= 1 then
+			-- as multas já saíram do caixa durante o dia; aqui só vira uma linha no extrato
+			table.insert(g.ledger, 1, { day = Game.day, time = Game.clockText(), kind = "despesa", category = "Multas de SLA", desc = "Multas de SLA do dia", amount = math.floor(stats.penalties) })
+		end
+		table.clear(g.usedToday)
 		local summary = {
 			provider = P.name,
 			day = Game.day,
@@ -304,6 +371,7 @@ function Game.newProvider(P: any): any
 			penaltyAcc -= whole
 			g.money -= whole
 			stats.costs += whole
+			g.record("despesa", "Multas de SLA", "", whole, false)
 		end
 
 		-- satisfação de quem é cliente ou escolheu este provedor

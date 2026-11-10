@@ -81,6 +81,13 @@ Dialogs.Bubble = {
 		"Passei só pra saber quando vão instalar a fibra.",
 		"Quero ser o primeiro cliente! Quando começa?",
 	},
+	-- no balcão da recepção, pedindo a instalação
+	request = {
+		"Oi! Quero contratar a internet de vocês.",
+		"Boa tarde! Vim pedir a instalação da fibra lá em casa.",
+		"Olá! Quero assinar o plano. Quando podem instalar?",
+		"Vim fazer o pedido da internet, pode anotar?",
+	},
 	visit_late = {
 		"E aí, cadê minha internet? O prazo já acabou!",
 		"Vim de novo perguntar da instalação. Nada ainda?",

@@ -13,6 +13,8 @@ local Director = require(script.Parent.IncidentDirector)
 local Providers = require(script.Parent.Providers)
 local RackModule = require(script.Parent.RackService)
 local TechModule = require(script.Parent.TechService)
+local ErpModule = require(script.Parent.ErpService)
+local OltCli = require(script.Parent.Cli.OltCli)
 
 local world = World.build()
 
@@ -22,6 +24,7 @@ Net.init(world, Game)
 Residents.init(world, Net, Game)
 Director.init(Net)
 RackModule.start()
+ErpModule.start()
 
 -- Fases de cada provedor: prazo de implantação, manifestação e falência
 local function phaseHandler(P: any)
@@ -49,8 +52,10 @@ Providers.onOpen = function(P: any)
 	Net.resetSlot(P.slot)
 	P.game = Game.newProvider(P)
 	P.rack = RackModule.new(P, world, Net)
+	P.erp = ErpModule.new(P, world, Net) -- antes da equipe: os técnicos trabalham pela fila do ERP
 	P.tech = TechModule.new(P, world, Net)
 	P.rack.setTech(P.tech)
+	P.erp.setTech(P.tech)
 	P.game.onPhase = phaseHandler(P)
 	Net.addAlarm(P.slot, "Provedor", P.name .. " aberto. Prazo de implantação até o fim do dia " .. P.game.deadlineDay(), "ok")
 end
@@ -65,6 +70,9 @@ Providers.onClose = function(P: any, _reason: string)
 	end
 	if P.tech then
 		P.tech.destroy()
+	end
+	if P.erp then
+		P.erp.destroy()
 	end
 	Net.resetSlot(P.slot)
 	-- depois que a equipe sai do provedor, as ferramentas dele somem da mochila
@@ -89,6 +97,14 @@ Providers.start(world)
 --   game.ServerStorage.FibraTeste:Invoke("semnet", 3)          casa 3 a 10 s de cancelar (se estiver sem internet)
 --   game.ServerStorage.FibraTeste:Invoke("abrir", "Nome")     o 1º jogador abre um provedor
 --   game.ServerStorage.FibraTeste:Invoke("alvo", 2)           os próximos comandos valem para o prédio 2
+--   game.ServerStorage.FibraTeste:Invoke("atendente")          contrata a atendente de graça
+--   game.ServerStorage.FibraTeste:Invoke("pedido", 3)          o morador da casa 3 pede instalação (OS)
+--   game.ServerStorage.FibraTeste:Invoke("os")                 resumo das OS do ERP
+--   game.ServerStorage.FibraTeste:Invoke("envelhecer", 5)      ONUs ficam 5 dias mais velhas (podem queimar)
+--   game.ServerStorage.FibraTeste:Invoke("rack")               roteador configurado + OLT de fábrica no rack, link contratado
+--   game.ServerStorage.FibraTeste:Invoke("instalar", 3)        instala a casa 3 na hora (gasta ONU e drop)
+--   game.ServerStorage.FibraTeste:Invoke("olt", "display service-port all")   roda uma linha no console da OLT
+--   game.ServerStorage.FibraTeste:Invoke("ativar", 3)          ativa a casa 3 na OLT pelo ERP
 local target = 1
 local function cur(): any
 	return Providers.slots[target] or Providers.list()[1]
@@ -122,7 +138,7 @@ Debug = {
 			Net.grantTool(P, key)
 		end
 		for key, sp in Config.Supplies do
-			P.game.addStock(key, sp.pack)
+			P.game.addStock(key, sp.pack, "Kit de teste")
 		end
 	end,
 	-- contrata o técnico de graça (para testar)
@@ -167,6 +183,84 @@ Debug = {
 		Net.slot(P.slot).upstreamMbps = Config.StartUpstreamMbps
 		P.game.publish()
 	end,
+	-- rack pronto para testar: roteador configurado e OLT de fábrica, ligados e cabeados
+	rack = function()
+		local P = cur()
+		P.game.linkContracted = true
+		Net.slot(P.slot).upstreamMbps = Config.StartUpstreamMbps
+		if not P.rack.activeOf("router") then
+			P.rack.addDevice("router", 1, true)
+		end
+		if not P.rack.activeOf("olt") then
+			P.rack.addDevice("olt", 2, true)
+		end
+		P.game.publish()
+		return "rack pronto"
+	end,
+	-- instala a casa na hora, como se o técnico tivesse ido
+	instalar = function(index: number)
+		local P = cur()
+		local h = Net.houses[index]
+		if h then
+			h.choice = P.slot
+		end
+		return Net.install(index, P, nil, "Teste")
+	end,
+	-- uma linha no console da OLT ativa (sessão de teste guardada entre chamadas)
+	olt = function(line: string)
+		local P = cur()
+		local dev = P.rack.activeOf("olt")
+		if not dev then
+			return "sem OLT ativa"
+		end
+		dev.testSession = dev.testSession or { mode = "user" }
+		local before = OltCli.prompt(dev.cfg, dev.testSession)
+		local out = OltCli.run(dev.cfg, dev.testSession, line, {
+			autofind = function()
+				return {}
+			end,
+			ontState = function()
+				return { run = "offline" }
+			end,
+			uptime = "0h",
+		})
+		return before .. line .. "\n" .. out
+	end,
+	ativar = function(index: number)
+		local ok, msg = cur().erp.activate(index, "Teste")
+		return tostring(ok) .. " " .. msg
+	end,
+	-- contrata a atendente de graça
+	atendente = function()
+		cur().game.money += Config.Attendant.HireFee
+		cur().erp.hireAttendant(nil)
+	end,
+	-- o morador da casa N vai ao balcão pedir instalação (só se ele escolheu este provedor)
+	pedido = function(index: number)
+		local P = cur()
+		local h = Net.houses[index]
+		if not h or h.choice ~= P.slot then
+			return "a casa " .. tostring(index) .. " não escolheu este provedor"
+		end
+		local o = P.erp.request(index)
+		return if o then "OS #" .. o.id .. " (" .. o.status .. ")" else "não abriu"
+	end,
+	-- resumo das OS: #id tipo casa status técnico
+	os = function()
+		local out = {}
+		for _, o in cur().erp.orders do
+			table.insert(out, string.format("#%d %s c%d %s %s", o.id, o.kind, o.index, o.status, o.techName or "-"))
+		end
+		return if #out > 0 then table.concat(out, " | ") else "nenhuma OS"
+	end,
+	-- envelhece as ONUs instaladas (dias) para testar a ONU queimada
+	envelhecer = function(days: number)
+		for _, h in Net.houses do
+			if h.onuId then
+				h.onuDay = (h.onuDay or Game.day) - (days or Config.Onu.MinAgeDays)
+			end
+		end
+	end,
 	-- pula o tempo sem internet da casa N para perto do cancelamento
 	semnet = function(index: number)
 		local h = Net.houses[index]
@@ -189,7 +283,7 @@ debugFn.Name = "FibraTeste"
 debugFn.OnInvoke = function(cmd: string, arg: any)
 	local f = Debug[cmd]
 	if not f then
-		return "comandos: abrir, alvo, incidente, hora, dinheiro, kit, semnet, tecnico, carro, romper, equipe, prazo, humor, link, escolhas"
+		return "comandos: abrir, alvo, incidente, hora, dinheiro, kit, semnet, tecnico, carro, romper, equipe, prazo, humor, link, escolhas, atendente, pedido, os, envelhecer"
 	end
 	return f(arg) or "ok"
 end
@@ -221,6 +315,7 @@ while true do
 	Director.tick(dt)
 	for _, P in Providers.list() do
 		P.game.tick(dt)
+		P.erp.tick(dt)
 	end
 	Game.tick(dt)
 

@@ -49,6 +49,10 @@ Estas regras foram combinadas com o Caio (dono do projeto). Os números ficam em
 
 ## Clientes
 
+- O morador que escolheu um provedor vai ao balcão da recepção pedir a internet. O pedido vira uma **OS de instalação** no ERP. Sem essa OS, ninguém instala a casa.
+- Se o morador escolher outro provedor (preço), a OS é cancelada e ele pede no outro.
+- O cliente sem internet há 45 s liga para o provedor: vira uma **OS de reparo**. Ela fecha sozinha quando a internet volta.
+- Uma ONU só queima depois de **5 dias de jogo** de uso, contados da instalação ou da última troca (`Config.Onu.MinAgeDays`).
 - O cliente só cancela depois de **1 dia inteiro** de expediente sem internet (12 horas de jogo seguidas).
 - Cada cliente paga, por dia, o preço do contrato dele. A instalação rende R$ 100.
 - Há multa de SLA de R$ 5 por cliente por hora sem internet.
@@ -58,8 +62,19 @@ Estas regras foram combinadas com o Caio (dono do projeto). Os números ficam em
 - Dá para contratar até 8 técnicos NPC:
   - R$ 300 na contratação e R$ 180 por dia de salário.
   - Rescisão de R$ 90 por dia trabalhado, com mínimo de R$ 180.
-- Os técnicos fazem sozinhos os reparos da rua, de dia, usando o estoque.
+- Os técnicos só trabalham com OS agendada no ERP (fila no celular). Instalam casas novas e atendem reparos: procuram o defeito no caminho até a OLT (rompimento, ONU, conector). Se a rua está boa, encerram a OS com o diagnóstico e avisam no NOC.
+- A fila de cada técnico: OS em execução, depois reparos, depois instalações, da mais antiga para a mais nova. Cada OS agendada vai para o técnico com menos serviço; sem técnico, fica com a equipe (jogadores).
+- Atendente do escritório (`Config.Attendant`): R$ 200 na contratação, R$ 120 por dia, rescisão de R$ 60 por dia trabalhado (mínimo R$ 120). Das 8h às 18h registra e agenda cada OS em uns 6 s. Sem atendente, o jogador agenda pelo ERP.
 - O carro da equipe custa R$ 3.500 e mais R$ 40 por dia. O jogador dirige. O técnico só usa o carro quando ele está na garagem.
+
+## ERP
+
+- Abre com a tecla O, o botão ERP ou o computador do balcão da recepção.
+- Abas: Ordens de serviço, Equipe, Receitas e despesas, Estoque.
+- Receitas e despesas por categoria (hoje e ontem) e extrato com os últimos 40 lançamentos.
+- Estoque com mínimo por insumo (`Config.Erp.MinStock`, alarme no NOC abaixo dele), compra de pacote pelo ERP e movimentação (quem usou e em qual OS).
+- Ativação na OLT: a OLT conta como configurada quando está ativa no rack e já tem pelo menos um service-port (primeiro cliente feito à mão no terminal). A partir daí, casas instaladas sem `ont add` ou sem `service-port` aparecem na seção Ativação na OLT; o botão Ativar ou a atendente (`Config.Attendant.ActivateSeconds` por casa, antes de agendar OS) fazem o `ont add` (ou `ont modify` se a ONU foi trocada, achando a ONT pelo desc `casa<N>`) e o `service-port` com VLAN 100, gemport 1.
+- Casa sem internet só por causa da OLT (não autorizada ou sem service-port) não vira OS de reparo.
 
 ## Crédito do governo
 

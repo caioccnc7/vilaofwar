@@ -461,7 +461,7 @@ function CarModule.new(P: any, worldData: any, netService: any): any
 			Remotes.notify(player, "O provedor já tem o " .. C.Name .. ". Ele fica na garagem ao lado do prédio.", "info")
 			return false
 		end
-		if not game_.spend(C.Price, C.Name, player) then
+		if not game_.spend(C.Price, C.Name, player, "Carro") then
 			return false
 		end
 		Car.owned = true
@@ -531,7 +531,7 @@ function CarModule.new(P: any, worldData: any, netService: any): any
 	end
 
 	table.insert(game_.dailyCosts, function(): number
-		return if Car.owned then C.DailyCost else 0
+		return if Car.owned then C.DailyCost else 0, "Carro", "Combustível e seguro do " .. C.Name
 	end)
 
 	-- quadro de chaves na garagem: recolher o carro deixado na rua

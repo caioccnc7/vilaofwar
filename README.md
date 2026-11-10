@@ -20,6 +20,7 @@ A vila começa **sem internet**. Os jogadores contratam o link da operadora e co
 - **Rua.** Tem postes, CTOs, splitters, casas com ONU e moradores que conversam. As ferramentas são Power Meter, Máquina de Fusão e Notebook TI.
 - **Gestão.**
   - Caixa, estoque de insumos, crédito do governo, SLA e multas.
+  - ERP do provedor: ordens de serviço pedidas pelos moradores, agenda e fila dos técnicos no celular, atendente do balcão, receitas e despesas e estoque.
   - Equipe de técnicos NPC e carro da equipe.
   - Prazo de implantação, manifestação e falência.
 - **Wiki dentro do jogo** (tecla J). É o guia prático de como jogar e é atualizada a cada funcionalidade nova.

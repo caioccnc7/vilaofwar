@@ -291,6 +291,27 @@ function Looks.resident(index: number): Model?
 end
 
 -- ---------------------------------------------------------------------------
+-- Atendente do escritório: camisa social azul com gola, cabelo chanel e headset
+-- ---------------------------------------------------------------------------
+
+function Looks.attendant(): Model?
+	local skin = SKIN.medium
+	local m = makeRig(skin, 0.97, 0.98)
+	if not m then
+		return nil
+	end
+	local prof = { shirt = Color3.fromRGB(45, 110, 200), collar = true, headphones = true, hairColor = "brown" }
+	dressBody(m, prof.shirt, Color3.fromRGB(35, 38, 48), Color3.fromRGB(30, 26, 24), true, skin)
+	local head = m:FindFirstChild("Head") :: BasePart?
+	if head then
+		hair(m, head, "bob", HAIR.brown)
+		faceExtras(m, head, prof)
+	end
+	torsoExtras(m, prof)
+	return m
+end
+
+-- ---------------------------------------------------------------------------
 -- Uniforme do técnico
 -- ---------------------------------------------------------------------------
 

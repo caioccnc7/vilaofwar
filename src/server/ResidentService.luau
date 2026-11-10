@@ -293,8 +293,11 @@ local function talkLine(r: any): string
 	-- quem ainda não tem internet conta qual provedor vai contratar (ou que está caro)
 	if h.contract ~= "active" and key ~= "protest" then
 		local P = providerOf(r)
-		if P then
-			text ..= string.format(" Vou contratar o %s, que cobra R$ %d por dia.", P.name, P.price)
+		local order = P and P.erp and P.erp.openInstallFor(r.index)
+		if P and order then
+			text ..= string.format(" Já pedi a instalação no %s: OS #%d, %s.", P.name, order.id, P.erp.statusText(order))
+		elseif P then
+			text ..= string.format(" Vou contratar o %s, que cobra R$ %d por dia. Ainda vou passar na recepção pedir.", P.name, P.price)
 		elseif #Providers.list() > 0 then
 			text ..= string.format(" Mas eu pago no máximo R$ %d por dia, e os provedores daqui cobram mais que isso.", h.willing or 0)
 		end
@@ -391,6 +394,24 @@ local function brain(r: any)
 				say(r, Dialogs.pick(Dialogs.Bubble.protest), 4)
 				task.wait(5 + math.random() * 4)
 			end
+		elseif isp and P.erp and h.contract ~= "active" and not P.erp.openInstallFor(r.index) and os.clock() >= r.nextRequest then
+			-- escolheu um provedor e ainda não pediu: vai até o balcão da recepção pedir a internet
+			r.nextRequest = os.clock() + 60
+			route(r, isp.entrance)
+			walk(r, isp.reception + Vector3.new(((r.index - 1) % 5) * 1.6 - 3.2, 0, 0))
+			local now = net.houses[r.index]
+			local still = providerOf(r)
+			if still == P and now.contract ~= "active" then
+				say(r, Dialogs.pick(Dialogs.Bubble.request), 6)
+				task.wait(2)
+				local o = P.erp.request(r.index)
+				if o then
+					r.nextIspVisit = math.max(r.nextIspVisit, os.clock() + 90)
+					task.wait(3)
+					say(r, string.format("Anotei aqui: OS #%d. Agora é esperar o técnico!", o.id), 6)
+				end
+			end
+			task.wait(5)
 		elseif isp and h.contract ~= "active" and os.clock() >= r.nextIspVisit then
 			-- quem não tem internet vai até a frente do provedor perguntar quando ela chega
 			local O = Config.Opening
@@ -551,6 +572,8 @@ function Residents.init(worldData: any, netService: any, gameService: any)
 			lastIspVisit = -1000,
 			-- primeira visita ao provedor espalhada no tempo, para não irem todos juntos
 			nextIspVisit = os.clock() + 20 + math.random() * 120,
+			-- pedido de instalação no balcão: logo depois de escolher um provedor
+			nextRequest = os.clock() + Config.Erp.RequestEvery[1] + math.random() * (Config.Erp.RequestEvery[2] - Config.Erp.RequestEvery[1]),
 			-- lugar de cada um na frente do provedor (calçada, longe da porta)
 			crowdOffset = Vector3.new(((i - 1) % 8) * 3 - 10.5 + (math.random() - 0.5), 0, 2 + math.floor((i - 1) / 8) * 3 + math.random()),
 			inCrowd = false,

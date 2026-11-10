@@ -1103,12 +1103,22 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 				stock = if it.supply then game_.stock[it.supply] else nil,
 			})
 		end
-		return { items = items, money = math.floor(game_.money), loan = game_.loanStatus(), tech = if techService then techService.status() else nil }
+		return { items = items, money = math.floor(game_.money), loan = game_.loanStatus(), tech = if techService then techService.status() else nil, attendant = if P.erp then P.erp.attendantStatus() else nil }
 	end
 
 	local function onBuy(player: Player, itemId: any)
 		local root = rootOf(player)
 		if not root or (root.Position - shopTerminal.Position).Magnitude > 16 then
+			return
+		end
+		-- atendente do balcão: "att_hire", "att_fire"
+		if P.erp and (itemId == "att_hire" or itemId == "att_fire") then
+			if itemId == "att_hire" then
+				P.erp.hireAttendant(player)
+			else
+				P.erp.fireAttendant(player)
+			end
+			Remotes.ShopOpen:FireClient(player, shopPayload())
 			return
 		end
 		-- equipe e carro: "tech_hire", "tech_fire:<id>", "car_buy", "car_recall"
@@ -1138,7 +1148,7 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 				end
 				if item.kind == "link" and not game_.linkContracted then
 					local name, price = linkOffer()
-					if not game_.spend(price, name, player) then
+					if not game_.spend(price, name, player, "Link da operadora") then
 						return
 					end
 					game_.linkContracted = true
@@ -1149,7 +1159,8 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 					Remotes.ShopOpen:FireClient(player, shopPayload())
 					return
 				end
-				if not game_.spend(item.price, item.name, player) then
+				local category = if item.kind == "supply" then "Insumos" elseif item.kind == "tool" then "Ferramentas" elseif item.kind == "link" then "Link da operadora" else "Equipamentos"
+				if not game_.spend(item.price, item.name, player, category) then
 					return
 				end
 				if item.kind == "link" then
@@ -1159,7 +1170,7 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 					net.grantTool(P, item.tool)
 					game_.notify(nil, item.name .. " comprado. Já está no inventário de toda a equipe.", "success")
 				elseif item.kind == "supply" then
-					game_.addStock(item.supply, item.units)
+					game_.addStock(item.supply, item.units, "Compra no terminal (" .. player.DisplayName .. ")")
 					Remotes.notify(player, string.format("Estoque: +%d %s (agora %d).", item.units, Config.Supplies[item.supply].name, game_.stock[item.supply]), "success")
 				else
 					spawnBox(item)
