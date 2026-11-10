@@ -121,6 +121,15 @@ for _, p in CollectionService:GetTagged("NocScreen") do
 	attach(p)
 end
 CollectionService:GetInstanceAddedSignal("NocScreen"):Connect(attach)
+-- prédio desmontado (provedor fechou): tira as telas dele
+CollectionService:GetInstanceRemovedSignal("NocScreen"):Connect(function(part)
+	for i = #screens, 1, -1 do
+		if screens[i].part == part then
+			screens[i].gui:Destroy()
+			table.remove(screens, i)
+		end
+	end
+end)
 
 local function clear(frame: Instance)
 	for _, c in frame:GetChildren() do
@@ -132,7 +141,8 @@ end
 -- Mapa
 -- ---------------------------------------------------------------------------
 
-local MIN_X, MAX_X, MIN_Z, MAX_Z = -160, 350, -262, 50
+local CityMap = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CityMap"))
+local MIN_X, MAX_X, MIN_Z, MAX_Z = CityMap.Bounds.minX + 40, CityMap.Bounds.maxX - 40, CityMap.Bounds.minZ + 40, CityMap.Bounds.maxZ - 40
 local blink = false
 
 local function renderMap(s: Screen, snap: any)
@@ -164,12 +174,21 @@ local function renderMap(s: Screen, snap: any)
 		})
 	end
 
-	-- rua e prédio
-	rect(MIN_X, -12, 330, 12, Color3.fromRGB(34, 40, 52))
-	rect(288, -262, 312, -12, Color3.fromRGB(34, 40, 52))
-	text(body, "Rua Principal", UDim2.fromOffset(px(160, -10)), UDim2.fromOffset(120, 14), { TextColor3 = QUIET, ZIndex = 2 })
-	text(body, "R. das Palmeiras", UDim2.fromOffset(px(214, -255)), UDim2.fromOffset(110, 14), { TextColor3 = QUIET, ZIndex = 2 })
-	local garage = rect(-87, -52, -63, -22, Color3.fromRGB(90, 60, 20))
+	-- ruas da cidade
+	local road = Color3.fromRGB(34, 40, 52)
+	for _, r in CityMap.Roads do
+		if r.axis == "x" then
+			rect(r.from - 12, r.at - 12, r.to + 12, r.at + 12, road)
+			text(body, r.name, UDim2.fromOffset(px(r.from + 30, r.at - 11)), UDim2.fromOffset(130, 12), { TextColor3 = QUIET, ZIndex = 2 })
+		else
+			rect(r.at - 12, r.from - 12, r.at + 12, r.to + 12, road)
+		end
+	end
+	local P0 = CityMap.Park
+	rect(P0.x0, P0.z0, P0.x1, P0.z1, Color3.fromRGB(30, 60, 40), 0.3)
+	local off = CityMap.Lots[snap.slot] and CityMap.Lots[snap.slot].offset or { 0, 0 }
+	local ox, oz = off[1], off[2]
+	local garage = rect(-87 + ox, -52 + oz, -63 + ox, -22 + oz, Color3.fromRGB(90, 60, 20))
 	corner(garage, 3)
 	if snap.tech and snap.tech.car and snap.tech.car.owned and snap.tech.car.x then
 		local cx, cz = px(snap.tech.car.x, snap.tech.car.z)
@@ -186,7 +205,7 @@ local function renderMap(s: Screen, snap: any)
 			end
 		end
 	end
-	local isp = rect(-148, -58, -92, -22, Color3.fromRGB(20, 60, 100))
+	local isp = rect(-148 + ox, -58 + oz, -92 + ox, -22 + oz, Color3.fromRGB(20, 60, 100))
 	corner(isp, 4)
 	text(isp, "PROVEDOR", UDim2.fromScale(0.05, 0.3), UDim2.fromScale(0.9, 0.4), { TextXAlignment = Enum.TextXAlignment.Center, Font = Enum.Font.GothamBold })
 
@@ -216,7 +235,7 @@ local function renderMap(s: Screen, snap: any)
 		-- casa que é cliente do outro provedor: roxa
 		local rival = h.contract == "rival"
 		local color = if rival then Color3.fromRGB(150, 90, 200) else Config.StatusColors[h.status] or QUIET
-		local box = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(x, z), Size = UDim2.fromOffset(30, 22), BackgroundColor3 = color, BackgroundTransparency = if h.status == "nocontract" and not rival then 0.7 else 0, BorderSizePixel = 0, Parent = body })
+		local box = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(x, z), Size = UDim2.fromOffset(22, 16), BackgroundColor3 = color, BackgroundTransparency = if h.status == "nocontract" and not rival then 0.7 else 0, BorderSizePixel = 0, Parent = body })
 		box.ZIndex = 4
 		corner(box, 5)
 		text(box, tostring(h.index), UDim2.fromScale(0, 0.1), UDim2.fromScale(1, 0.8), { TextXAlignment = Enum.TextXAlignment.Center, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(10, 10, 15), ZIndex = 5 })
@@ -458,8 +477,16 @@ end
 local function renderOnus(s: Screen, snap: any)
 	local body = s.body
 	clear(body)
-	-- duas colunas: Rua Principal (1 a 8) e Rua das Palmeiras (9 a 16)
-	local perCol = math.ceil(#snap.houses / 2)
+	-- só as casas do provedor (clientes e quem escolheu ele), em duas colunas
+	local mine = {}
+	for _, h in snap.houses do
+		if h.contract == "active" or h.choice == snap.slot then
+			table.insert(mine, h)
+		end
+	end
+	snap = table.clone(snap)
+	snap.houses = mine
+	local perCol = math.max(1, math.ceil(#snap.houses / 2))
 	local rh, y0 = rows(s, perCol + 1)
 	local function cx(col: number, frac: number): UDim
 		return UDim.new((col - 1) * 0.5 + frac * 0.5, if frac == 0 then 12 else 0)
@@ -648,9 +675,11 @@ local function renderRack(s: Screen, snap: any)
 
 	local x0 = math.floor(s.w * split)
 	text(body, "CABOS PRINCIPAIS", UDim2.fromOffset(x0 + 6, 6), UDim2.new(1 - split, -18, 0, rh - 10), { Font = Enum.Font.GothamBold, TextColor3 = ACCENT })
+	-- 2 cabos de cobre + 1 fibra por CTO: as linhas encolhem para caber
+	local lrh = math.floor((s.h - 16 - rh) / (#rk.links + 1))
 	for i, l in rk.links do
-		local y = 6 + i * rh
-		local row = new("Frame", { Position = UDim2.fromOffset(x0, y), Size = UDim2.new(1 - split, -10, 0, rh - 6), BackgroundColor3 = PANEL, BorderSizePixel = 0, Parent = body })
+		local y = 6 + rh + (i - 1) * lrh
+		local row = new("Frame", { Position = UDim2.fromOffset(x0, y), Size = UDim2.new(1 - split, -10, 0, lrh - 4), BackgroundColor3 = PANEL, BorderSizePixel = 0, Parent = body })
 		corner(row, 6)
 		new("Frame", { Position = UDim2.new(0, 8, 0.5, -5), Size = UDim2.new(0, 26, 0, 10), BackgroundColor3 = CableColor[l.color] or INK, BorderSizePixel = 0, Parent = row })
 		local st = LinkState[l.state] or { l.state, QUIET }
@@ -663,7 +692,7 @@ local function renderRack(s: Screen, snap: any)
 	end
 	local g = snap.game
 	local stock = g.stock or {}
-	text(body, string.format("Estoque: %d ONU · %d drop · %d emendas · %d conectores", stock.onu or 0, stock.drop or 0, stock.emenda or 0, stock.conector or 0), UDim2.fromOffset(x0 + 6, 6 + 5 * rh + 4), UDim2.new(1 - split, -18, 0, rh - 14), { TextColor3 = QUIET })
+	text(body, string.format("Estoque: %d ONU · %d drop · %d emendas · %d conectores", stock.onu or 0, stock.drop or 0, stock.emenda or 0, stock.conector or 0), UDim2.fromOffset(x0 + 6, 6 + rh + #rk.links * lrh + 2), UDim2.new(1 - split, -18, 0, math.min(rh - 14, lrh)), { TextColor3 = QUIET })
 end
 
 local Renderers = {

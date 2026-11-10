@@ -15,8 +15,9 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- O relógio fica em GameState; o caixa, o estoque e a fase de cada provedor ficam
--- em GameState.P1 / P2. O atributo "Slot" do jogador diz de qual provedor ele é.
-local SLOT_COUNT = 2
+-- em GameState.P1 ... P5 (um por lote). O atributo "Slot" do jogador diz de qual provedor ele é.
+local CityMap = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CityMap"))
+local SLOT_COUNT = #CityMap.Lots
 local function myFolder(): Instance?
 	local slot = player:GetAttribute("Slot")
 	return if slot then State:FindFirstChild("P" .. slot) else nil
@@ -326,7 +327,7 @@ local helpText = label(help, table.concat({
 	"Power Meter: medir sinal na casa ou na caixa",
 	"Fusão: emendar, refazer conector, instalar cliente",
 	"Notebook TI: clique; perto do rack digite console",
-	"T: falar · M: tablet · J: wiki · P: provedor · O: ERP",
+	"T: falar · M: tablet · J: wiki · P: provedor · O: ERP · L: licitações",
 }, "\n"), { Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 1, -16), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = QUIET })
 new("UITextSizeConstraint", { MaxTextSize = 15, Parent = helpText })
 -- as dicas falam de teclas; no celular ficam escondidas (o canto é do controle de andar)
@@ -530,14 +531,15 @@ Remotes:WaitForChild("Bankrupt").OnClientEvent:Connect(showBankrupt)
 local ProviderAction = Remotes:WaitForChild("ProviderAction") :: RemoteEvent
 local GREEN = Config.StatusColors.online
 
-local menu = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(500, 480), BackgroundColor3 = DARK, Visible = false, ZIndex = 20, Parent = gui })
+local menu = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(500, 560), BackgroundColor3 = DARK, Visible = false, ZIndex = 20, Parent = gui })
 round(menu, 16)
 new("UIStroke", { Color = ACCENT, Thickness = 2, Parent = menu })
-UiFit.scale(menu, 500, 480, 10)
+UiFit.scale(menu, 500, 560, 10)
 UiFit.closeX(menu, function()
 	menu.Visible = false
 end, 30)
-local menuBody = new("Frame", { Position = UDim2.fromOffset(18, 14), Size = UDim2.new(1, -36, 1, -28), BackgroundTransparency = 1, ZIndex = 21, Parent = menu })
+-- 5 lotes não cabem numa tela de celular: o corpo do menu rola
+local menuBody = new("ScrollingFrame", { Position = UDim2.fromOffset(18, 14), Size = UDim2.new(1, -30, 1, -28), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 6, ScrollBarImageColor3 = ACCENT, CanvasSize = UDim2.fromOffset(0, 900), ZIndex = 21, Parent = menu })
 
 local function mLabel(text: string, x: number, y: number, w: number, h: number, props: { [string]: any }?): TextLabel
 	local l = label(menuBody, text, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
@@ -601,17 +603,18 @@ local function renderMenu()
 	local P = Config.Price
 	mLabel("PROVEDORES DA VILA", 0, 0, 420, 28, { Font = Enum.Font.GothamBlack, TextColor3 = ACCENT })
 	local status
+	local cost = Config.Lots.BuildCost
 	if mySlot then
 		local f = State:FindFirstChild("P" .. mySlot)
 		local role = if f and f:GetAttribute("Owner") == player.Name then "dono" else "sócio"
 		status = string.format("Você é %s do %s · seu dinheiro: R$ %d", role, if f then f:GetAttribute("Name") or "?" else "?", wallet)
 	else
-		status = string.format("Seu dinheiro: R$ %d. Abra um provedor (vira o capital) ou entre como sócio.", wallet)
+		status = string.format("Seu dinheiro: R$ %d. Construa o seu provedor num lote livre (obra de R$ %d) ou trabalhe como sócio de um dono.", wallet, cost)
 	end
-	mLabel(status, 0, 32, 464, 20, { TextColor3 = QUIET, TextScaled = false, TextSize = 14, TextWrapped = true })
+	mLabel(status, 0, 32, 464, 34, { TextColor3 = QUIET, TextScaled = false, TextSize = 14, TextWrapped = true })
 
-	-- um cartão por prédio
-	local y = 62
+	-- um cartão por lote (até 5 provedores; cada jogador só pode ser dono de 1)
+	local y = 72
 	for slot = 1, SLOT_COUNT do
 		local f = State:FindFirstChild("P" .. slot)
 		local open = f and f:GetAttribute("Open")
@@ -619,7 +622,7 @@ local function renderMenu()
 		round(card, 10)
 		if open then
 			local partners = f:GetAttribute("Partners") or ""
-			mLabel(string.format("Prédio %d · %s · R$ %d por dia", slot, f:GetAttribute("Name") or "?", f:GetAttribute("Price") or 0), 12, y + 8, 440, 22, { Font = Enum.Font.GothamBold })
+			mLabel(string.format("Lote %d · %s · R$ %d por dia", slot, f:GetAttribute("Name") or "?", f:GetAttribute("Price") or 0), 12, y + 8, 440, 22, { Font = Enum.Font.GothamBold })
 			mLabel(string.format("Dono: %s%s", f:GetAttribute("Owner") or "?", if partners ~= "" then " · Sócios: " .. partners else ""), 12, y + 32, 440, 18, { TextColor3 = QUIET, TextScaled = false, TextSize = 14 })
 			if not mySlot then
 				mButton("Entrar como sócio", 12, y + 56, 200, GREEN, function()
@@ -630,11 +633,13 @@ local function renderMenu()
 				mLabel("(o seu provedor)", 12, y + 60, 200, 18, { TextColor3 = GREEN, TextScaled = false, TextSize = 14 })
 			end
 		else
-			mLabel(string.format("Prédio %d · disponível", slot), 12, y + 8, 440, 22, { Font = Enum.Font.GothamBold, TextColor3 = QUIET })
+			local lot = CityMap.Lots[slot]
+			mLabel(string.format("Lote %d · %s (%s) · livre", slot, lot.street, lot.place), 12, y + 8, 440, 22, { Font = Enum.Font.GothamBold, TextColor3 = QUIET })
 			if not mySlot then
-				mLabel(string.format("Seus R$ %d viram o capital do provedor.", wallet), 12, y + 32, 440, 18, { TextColor3 = QUIET, TextScaled = false, TextSize = 14 })
+				local left = math.max(0, wallet - cost)
+				mLabel(string.format("Obra: R$ %d. Os outros R$ %d viram o caixa do provedor.", cost, left), 12, y + 32, 440, 18, { TextColor3 = QUIET, TextScaled = false, TextSize = 14 })
 				local nameBox = mBox("open" .. slot, "Nome do provedor (3 a 24 letras)", 12, y + 56, 250)
-				mButton("Abrir provedor", 272, y + 56, 180, ACCENT, function()
+				mButton("Construir prédio", 272, y + 56, 180, ACCENT, function()
 					ProviderAction:FireServer("open", slot, nameBox.Text)
 					table.clear(typed)
 					menu.Visible = false
@@ -668,7 +673,9 @@ local function renderMenu()
 			ProviderAction:FireServer("invest", tonumber(investBox.Text))
 			typed.invest = nil
 		end)
+		y += 40
 	end
+	menuBody.CanvasSize = UDim2.fromOffset(0, y + 20)
 end
 
 -- só redesenha quando algo do menu muda de verdade (para não apagar o que está sendo digitado)
@@ -722,6 +729,7 @@ Remotes:WaitForChild("ProviderMenu").OnClientEvent:Connect(openProviderMenu)
 -- botão na tela (no celular não tem tecla P)
 local menuBtn = new("TextButton", {
 	Name = "BotaoProvedor",
+	AnchorPoint = if UiFit.touch then Vector2.new(0, 0) else Vector2.new(0, 1),
 	Position = if UiFit.touch then UDim2.fromOffset(12, 170) else UDim2.new(0, 12, 1, -176),
 	Size = UDim2.fromOffset(110, 36),
 	BackgroundColor3 = DARK,

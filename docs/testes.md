@@ -25,6 +25,14 @@ F:Invoke("atendente")            -- contrata a atendente de graça
 F:Invoke("pedido", 3)            -- o morador da casa 3 pede instalação (abre OS)
 F:Invoke("os")                   -- resumo das OS do ERP
 F:Invoke("envelhecer", 5)        -- ONUs instaladas ficam 5 dias mais velhas
+F:Invoke("lote", 4)              -- o 1º jogador constrói o provedor no lote 4
+F:Invoke("sinal", 3)             -- caminho óptico da casa 3 até a OLT do alvo (mostra SN e porta PON)
+F:Invoke("licitacao")            -- abre todas as licitações agora
+F:Invoke("atestado", 0)          -- muda quantos clientes online o atestado pede (só nesta sessão)
+F:Invoke("proposta", 180)        -- o provedor alvo propõe R$ 180 em todas as abertas
+F:Invoke("resultado")            -- fecha as licitações abertas e escolhe o vencedor
+F:Invoke("licitacoes")           -- resumo das licitações
+F:Invoke("ir", 25)               -- leva o 1º jogador até a casa (ou prédio público) N
 ```
 
 ## Roteiro manual (1 jogador)
@@ -56,6 +64,15 @@ F:Invoke("envelhecer", 5)        -- ONUs instaladas ficam 5 dias mais velhas
 3. Instale uma casa: o ERP mostra a seção Ativação na OLT com o botão Ativar cinza e o aviso de OLT não configurada.
 4. Ative essa casa à mão (ont add + service-port). Instale outra: Ativar fica azul e funciona; `display current-configuration` mostra a ONT `casa<N>` e o service-port novo.
 5. Com a atendente contratada no expediente, a próxima casa instalada é ativada sozinha e a OS de instalação ganha a nota "Ativada na OLT por ...".
+
+## Roteiro da cidade ampliada e das licitações
+
+1. `lote 3`, `rack`, `kit`, `instalar 25` e `sinal 25`: o caminho tem que passar por `CTO_G`, `SPL4` e `TRONCO3_SPL4`.
+2. `atestado 0`, `licitacao`, `proposta 210`, `resultado`, `licitacoes`: Prefeitura, Delegacia e Hospital ficam com o provedor; a Escola recusa (R$ 210 passa da referência de R$ 200). `os` mostra as OS de instalação.
+3. Tecla L: a tela mostra os contratos, o prazo de instalação e o próximo edital.
+4. O `olt` do debug não tem autofind (lista vazia). Para o primeiro `ont add`, pegue o SN com `sinal N`.
+
+Testado em 10/11/2026 com 1 jogador. Falta testar com 2+ jogadores e no simulador de celular.
 
 ## Roteiro com 2 jogadores (ainda pendente)
 

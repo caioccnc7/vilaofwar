@@ -1,4 +1,5 @@
--- Constrói a Vila Aurora por código: chão, rua, casas, postes, praça e o prédio do provedor.
+-- Constrói a Vila Aurora por código: ruas, bairros, casas, mansões, prédios públicos,
+-- postes, montanhas e os prédios dos provedores (construídos quando alguém abre um).
 -- Tudo é gerado quando o servidor inicia, então o mapa vive no código e é fácil de ajustar.
 
 local Lighting = game:GetService("Lighting")
@@ -6,6 +7,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
+local CityMap = require(Shared.CityMap)
 
 local World = {}
 
@@ -108,21 +110,25 @@ local function setupLighting()
 	end
 end
 
-local function streetLamp(pos: Vector3, facing: number | Vector3, parent: Instance)
+local function streetLamp(pos: Vector3, facing: number | Vector3, parent: Instance, withLight: boolean?)
 	-- facing: -1/1 (braço no eixo Z, rua principal) ou um vetor (ruas transversais)
 	local dir = if typeof(facing) == "Vector3" then facing else Vector3.new(0, 0, facing :: number)
 	part({ Name = "LampPole", Size = Vector3.new(0.6, 14, 0.6), CFrame = CFrame.new(pos + Vector3.new(0, 7, 0)), Color = Color3.fromRGB(45, 45, 50), Material = Enum.Material.Metal, Parent = parent })
 	part({ Name = "LampArm", Size = Vector3.new(0.4, 0.4, 4), CFrame = CFrame.lookAt(pos + Vector3.new(0, 13.8, 0) + dir * 2, pos + Vector3.new(0, 13.8, 0) + dir * 3), Color = Color3.fromRGB(45, 45, 50), Material = Enum.Material.Metal, Parent = parent })
 	local head = part({ Name = "LampHead", Size = Vector3.new(1.6, 0.5, 1.2), CFrame = CFrame.new(pos + Vector3.new(0, 13.5, 0) + dir * 3.8), Color = Color3.fromRGB(255, 236, 190), Material = Enum.Material.Neon, CastShadow = false, Parent = parent })
-	local light = Instance.new("SpotLight")
-	light.Face = Enum.NormalId.Bottom
-	light.Angle = 110
-	light.Range = 30
-	light.Brightness = 2
-	light.Color = Color3.fromRGB(255, 226, 170)
-	light.Parent = head
+	-- no celular cada luz pesa: só metade dos postes tem luz de verdade
+	if withLight ~= false then
+		local light = Instance.new("SpotLight")
+		light.Face = Enum.NormalId.Bottom
+		light.Angle = 110
+		light.Range = 30
+		light.Brightness = 2
+		light.Color = Color3.fromRGB(255, 226, 170)
+		light.Parent = head
+	end
 	CollectionService:AddTag(head, "StreetLight")
 end
+World.streetLamp = streetLamp
 
 local function tree(pos: Vector3, parent: Instance, scale: number?)
 	local s = scale or 1
@@ -139,135 +145,362 @@ local function bench(cf: CFrame, parent: Instance)
 	end
 end
 
--- Rua Principal (eixo X, z = 0) vai do provedor até a esquina com a Rua das Palmeiras.
--- A Rua das Palmeiras (eixo Z, x = 300) sobe para o norte, longe do provedor.
-World.MainRoadX = { -210, 330 }
+-- ---------------------------------------------------------------------------
+-- Ruas da cidade (planta em Shared/CityMap)
+-- ---------------------------------------------------------------------------
+-- Rua Principal (z = 0), Avenida Central (z = -300), Avenida Sul (z = 200) e a
+-- Alameda das Acácias (z = 330, bairro nobre) correm de oeste a leste. A Rua das
+-- Palmeiras (x = 300), a Rua da Serra (x = -300) e a Rua do Rio (x = 540) ligam as
+-- avenidas de norte a sul.
+
+local ROAD_HALF = CityMap.RoadHalf
+World.MainRoadX = { -300, 540 }
 World.PalmX = 300 -- eixo da Rua das Palmeiras
-World.PalmZ = { -262, -12 }
+World.PalmZ = { -300, -12 }
 
-local function buildGround(parent: Instance)
-	part({ Name = "Grass", Size = Vector3.new(820, 2, 600), CFrame = CFrame.new(60, -1, -50), Color = Color3.fromRGB(96, 158, 78), Material = Enum.Material.Grass, Parent = parent })
-	local rx0, rx1 = World.MainRoadX[1], World.MainRoadX[2]
-	local rlen, rcx = rx1 - rx0, (rx0 + rx1) / 2
-	part({ Name = "Road", Size = Vector3.new(rlen, 0.2, 24), CFrame = CFrame.new(rcx, 0.1, 0), Color = Color3.fromRGB(52, 54, 58), Material = Enum.Material.Asphalt, Parent = parent })
-	for x = rx0 + 10, rx1 - 10, 14 do
-		part({ Name = "LaneDash", Size = Vector3.new(6, 0.05, 0.5), CFrame = CFrame.new(x, 0.22, 0), Color = Color3.fromRGB(240, 220, 120), CanCollide = false, Parent = parent })
-	end
-	-- calçada sul inteira; a do norte é cortada na esquina da Rua das Palmeiras
-	local px = World.PalmX
-	local function walkway(x0: number, x1: number, z: number)
-		part({ Name = "Sidewalk", Size = Vector3.new(x1 - x0, 0.5, 6), CFrame = CFrame.new((x0 + x1) / 2, 0.25, z), Color = Color3.fromRGB(196, 192, 184), Material = Enum.Material.Concrete, Parent = parent })
-		part({ Name = "Curb", Size = Vector3.new(x1 - x0, 0.6, 0.4), CFrame = CFrame.new((x0 + x1) / 2, 0.3, z - 3 * math.sign(z)), Color = Color3.fromRGB(160, 156, 150), Material = Enum.Material.Concrete, Parent = parent })
-	end
-	walkway(rx0, rx1, 15)
-	walkway(rx0, px - 12, -15)
-	walkway(px + 12, rx1, -15)
-	-- postes de luz e árvores ao longo da rua
-	for x = -170, rx1 - 30, 50 do
-		streetLamp(Vector3.new(x, 0.5, 17), -1, parent)
-		if x + 25 < px - 20 then
-			streetLamp(Vector3.new(x + 25, 0.5, -17), 1, parent)
+-- Retângulos ocupados (lotes, casas, prédios). Árvores e postes de luz desviam deles.
+local reserved: { { number } } = {}
+local function reserve(x0: number, x1: number, z0: number, z1: number)
+	table.insert(reserved, { math.min(x0, x1), math.max(x0, x1), math.min(z0, z1), math.max(z0, z1) })
+end
+local function isFree(x: number, z: number, margin: number?): boolean
+	local m = margin or 0
+	for _, r in reserved do
+		if x > r[1] - m and x < r[2] + m and z > r[3] - m and z < r[4] + m then
+			return false
 		end
 	end
-	for _, x in { -165, 140, 165, 190, 215, 240 } do
-		-- o lado norte entre x 140 e 240 é o terreno do prédio 2
-		if x < 135 then
-			tree(Vector3.new(x, 0, -30), parent)
-		end
-		tree(Vector3.new(x, 0, 30), parent, 0.9)
-	end
-	for _, x in { 265, 290, 315 } do
-		tree(Vector3.new(x, 0, 32), parent, 1.1)
-	end
+	return true
+end
+World.isFree = isFree
 
-	-- Rua das Palmeiras
-	local z0, z1 = World.PalmZ[1], World.PalmZ[2]
-	local plen, pcz = z1 - z0, (z0 + z1) / 2
-	part({ Name = "RoadPalmeiras", Size = Vector3.new(24, 0.2, plen), CFrame = CFrame.new(px, 0.1, pcz), Color = Color3.fromRGB(52, 54, 58), Material = Enum.Material.Asphalt, Parent = parent })
-	for z = z1 - 12, z0 + 8, -14 do
-		part({ Name = "LaneDash", Size = Vector3.new(0.5, 0.05, 6), CFrame = CFrame.new(px, 0.22, z), Color = Color3.fromRGB(240, 220, 120), CanCollide = false, Parent = parent })
-	end
-	for _, side in { -1, 1 } do
-		local sx = px + side * 15
-		local slen = (z1 - 6) - z0
-		part({ Name = "Sidewalk", Size = Vector3.new(6, 0.5, slen), CFrame = CFrame.new(sx, 0.25, z0 + slen / 2), Color = Color3.fromRGB(196, 192, 184), Material = Enum.Material.Concrete, Parent = parent })
-		part({ Name = "Curb", Size = Vector3.new(0.4, 0.6, slen), CFrame = CFrame.new(sx - 3 * side, 0.3, z0 + slen / 2), Color = Color3.fromRGB(160, 156, 150), Material = Enum.Material.Concrete, Parent = parent })
-	end
-	-- fim da rua: canteiro com palmeiras
-	part({ Name = "Canteiro", Size = Vector3.new(40, 1.2, 6), CFrame = CFrame.new(px, 0.6, z0 - 3), Color = Color3.fromRGB(150, 120, 90), Material = Enum.Material.Brick, Parent = parent })
-	for z = z1 - 40, z0 + 10, -50 do
-		streetLamp(Vector3.new(px - 17, 0.5, z), Vector3.new(1, 0, 0), parent)
-		streetLamp(Vector3.new(px + 17, 0.5, z - 25), Vector3.new(-1, 0, 0), parent)
-	end
-	local function palm(pos: Vector3)
-		part({ Name = "PalmTrunk", Size = Vector3.new(1.1, 13, 1.1), CFrame = CFrame.new(pos + Vector3.new(0, 6.5, 0)), Color = Color3.fromRGB(140, 110, 75), Material = Enum.Material.Wood, Parent = parent })
-		for a = 0, 300, 60 do
-			local cf = CFrame.new(pos + Vector3.new(0, 13, 0)) * CFrame.Angles(0, math.rad(a), 0) * CFrame.Angles(math.rad(-25), 0, 0) * CFrame.new(0, 0, -2.6)
-			part({ Name = "PalmLeaf", Size = Vector3.new(1.4, 0.2, 5.5), CFrame = cf, Color = Color3.fromRGB(60, 140, 60), Material = Enum.Material.Grass, CanCollide = false, Parent = parent })
+-- Ruas que cruzam (ou encostam) numa rua: devolve as posições ao longo dela.
+local function crossings(r: any): { { at: number, side: number } }
+	local out = {}
+	for _, q in CityMap.Roads do
+		if q.axis ~= r.axis and q.at >= r.from - 1 and q.at <= r.to + 1 and r.at >= q.from - 1 and r.at <= q.to + 1 then
+			-- side: -1 = a outra rua só vai para o lado negativo, 1 = só positivo, 0 = cruza
+			local side = 0
+			if math.abs(q.from - r.at) < 1 then
+				side = 1
+			elseif math.abs(q.to - r.at) < 1 then
+				side = -1
+			end
+			table.insert(out, { at = q.at, side = side })
 		end
 	end
-	for _, dx in { -14, -4, 6, 16 } do
-		palm(Vector3.new(px + dx, 1.2, z0 - 3))
-	end
-	for _, z in { -85, -135, -185, -235 } do
-		tree(Vector3.new(232, 0, z), parent, 1.1)
-		tree(Vector3.new(368, 0, z + 20), parent)
-	end
-	-- placas de rua na esquina
-	local function streetSign(pos: Vector3, text: string, yaw: number)
-		part({ Name = "StreetSignPost", Size = Vector3.new(0.3, 8, 0.3), CFrame = CFrame.new(pos + Vector3.new(0, 4, 0)), Color = Color3.fromRGB(60, 60, 60), Parent = parent })
-		local plate = part({ Name = "StreetSign", Size = Vector3.new(7, 1.3, 0.2), CFrame = CFrame.new(pos + Vector3.new(0, 7.6, 0)) * CFrame.Angles(0, math.rad(yaw), 0), Color = Color3.fromRGB(30, 80, 150), Parent = parent })
-		textOn(plate, Enum.NormalId.Front, text, Color3.new(1, 1, 1))
-		textOn(plate, Enum.NormalId.Back, text, Color3.new(1, 1, 1))
-	end
-	streetSign(Vector3.new(px - 16, 0.5, -19), "Rua das Palmeiras", 90)
-	streetSign(Vector3.new(px - 20, 0.5, -16), "Rua Principal", 0)
-
-	-- placa de entrada da cidade, no fim da Rua Principal
-	local sign = part({ Name = "CitySign", Size = Vector3.new(12, 4, 0.4), CFrame = CFrame.new(rx1 + 4, 6, 20) * CFrame.Angles(0, math.rad(-90), 0), Color = Color3.fromRGB(30, 110, 70), Parent = parent })
-	textOn(sign, Enum.NormalId.Front, "Bem-vindo à " .. Config.CityName, Color3.new(1, 1, 1))
-	textOn(sign, Enum.NormalId.Back, "Bem-vindo à " .. Config.CityName, Color3.new(1, 1, 1))
-	part({ Name = "CitySignPost", Size = Vector3.new(0.5, 4, 0.5), CFrame = CFrame.new(rx1 + 4, 2, 20), Color = Color3.fromRGB(60, 60, 60), Parent = parent })
+	return out
 end
 
--- Caminho a pé (ou de carro) entre dois pontos, sempre pela pista: anda pela faixa
--- da Rua Principal (z = ±8) e, se precisar, entra na Rua das Palmeiras (x = 300 ± 8).
-local function onPalm(p: Vector3): boolean
-	return p.X > World.PalmX - 30 and p.Z < -14
+-- Ponto (x, z) de uma rua: along = posição no eixo da rua, off = distância do eixo
+local function roadPoint(r: any, along: number, off: number, y: number): Vector3
+	if r.axis == "x" then
+		return Vector3.new(along, y, r.at + off)
+	end
+	return Vector3.new(r.at + off, y, along)
 end
-local function mainLane(p: Vector3): number
-	return if math.abs(p.Z) < 12 then p.Z else math.sign(p.Z) * 8
+
+
+-- Pinheiro simples (2 peças): usado nas matas da borda da cidade
+local function pine(pos: Vector3, parent: Instance, scale: number?)
+	local s = scale or 1
+	local up = CFrame.Angles(0, 0, math.rad(90))
+	part({ Name = "PineTrunk", Size = Vector3.new(1.2 * s, 6 * s, 1.2 * s), CFrame = CFrame.new(pos + Vector3.new(0, 3 * s, 0)), Color = Color3.fromRGB(92, 66, 45), Material = Enum.Material.Wood, CastShadow = false, Parent = parent })
+	part({ Name = "PineLow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(8 * s, 7.5 * s, 7.5 * s), CFrame = CFrame.new(pos + Vector3.new(0, 9 * s, 0)) * up, Color = Color3.fromRGB(46, 102, 58), Material = Enum.Material.Grass, CastShadow = false, Parent = parent })
+	part({ Name = "PineTop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(6 * s, 4.5 * s, 4.5 * s), CFrame = CFrame.new(pos + Vector3.new(0, 15 * s, 0)) * up, Color = Color3.fromRGB(56, 118, 66), Material = Enum.Material.Grass, CastShadow = false, Parent = parent })
 end
-local function palmLane(p: Vector3): number
-	local dx = p.X - World.PalmX
-	return if math.abs(dx) < 12 then p.X else World.PalmX + math.sign(dx) * 8
+World.pine = pine
+
+local function palm(pos: Vector3, parent: Instance)
+	part({ Name = "PalmTrunk", Size = Vector3.new(1.1, 13, 1.1), CFrame = CFrame.new(pos + Vector3.new(0, 6.5, 0)), Color = Color3.fromRGB(140, 110, 75), Material = Enum.Material.Wood, Parent = parent })
+	for a = 0, 300, 60 do
+		local cf = CFrame.new(pos + Vector3.new(0, 13, 0)) * CFrame.Angles(0, math.rad(a), 0) * CFrame.Angles(math.rad(-25), 0, 0) * CFrame.new(0, 0, -2.6)
+		part({ Name = "PalmLeaf", Size = Vector3.new(1.4, 0.2, 5.5), CFrame = cf, Color = Color3.fromRGB(60, 140, 60), Material = Enum.Material.Grass, CanCollide = false, Parent = parent })
+	end
 end
-function World.path(from: Vector3, to: Vector3, y: number?): { Vector3 }
+World.palm = palm
+
+local function streetSign(pos: Vector3, text: string, yaw: number, parent: Instance)
+	part({ Name = "StreetSignPost", Size = Vector3.new(0.3, 8, 0.3), CFrame = CFrame.new(pos + Vector3.new(0, 4, 0)), Color = Color3.fromRGB(60, 60, 60), Parent = parent })
+	local plate = part({ Name = "StreetSign", Size = Vector3.new(9, 1.3, 0.2), CFrame = CFrame.new(pos + Vector3.new(0, 7.6, 0)) * CFrame.Angles(0, math.rad(yaw), 0), Color = Color3.fromRGB(30, 80, 150), Parent = parent })
+	textOn(plate, Enum.NormalId.Front, text, Color3.new(1, 1, 1))
+	textOn(plate, Enum.NormalId.Back, text, Color3.new(1, 1, 1))
+end
+
+local function buildRoads(parent: Instance)
+	local B = CityMap.Bounds
+	-- gramado da cidade inteira (as montanhas ficam fora dele)
+	part({ Name = "Grass", Size = Vector3.new(B.maxX - B.minX + 400, 2, B.maxZ - B.minZ + 400), CFrame = CFrame.new((B.minX + B.maxX) / 2, -1, (B.minZ + B.maxZ) / 2), Color = Color3.fromRGB(96, 158, 78), Material = Enum.Material.Grass, Parent = parent })
+
+	local asphalt = Color3.fromRGB(52, 54, 58)
+	for _, r in CityMap.Roads do
+		local len = r.to - r.from + ROAD_HALF * 2
+		local mid = (r.from + r.to) / 2
+		-- ruas norte-sul ficam um pouco mais baixas: no cruzamento a leste-oeste fica por cima
+		local thick = if r.axis == "x" then 0.2 else 0.16
+		local size = if r.axis == "x" then Vector3.new(len, thick, ROAD_HALF * 2) else Vector3.new(ROAD_HALF * 2, thick, len)
+		part({ Name = "Road_" .. r.name, Size = size, CFrame = CFrame.new(roadPoint(r, mid, 0, thick / 2)), Color = asphalt, Material = Enum.Material.Asphalt, Parent = parent })
+		local cross = crossings(r)
+		local function nearCross(along: number, dist: number): boolean
+			for _, c in cross do
+				if math.abs(along - c.at) < dist then
+					return true
+				end
+			end
+			return false
+		end
+		-- faixa amarela do meio
+		for a = r.from + 10, r.to - 10, 14 do
+			if not nearCross(a, 15) then
+				local dsize = if r.axis == "x" then Vector3.new(6, 0.05, 0.5) else Vector3.new(0.5, 0.05, 6)
+				part({ Name = "LaneDash", Size = dsize, CFrame = CFrame.new(roadPoint(r, a, 0, 0.22)), Color = Color3.fromRGB(240, 220, 120), CanCollide = false, CastShadow = false, Parent = parent })
+			end
+		end
+		-- calçadas dos dois lados, cortadas nos cruzamentos
+		for _, side in { -1, 1 } do
+			local cuts = {}
+			for _, c in cross do
+				if c.side == 0 or c.side == side then
+					table.insert(cuts, { c.at - ROAD_HALF, c.at + ROAD_HALF })
+				end
+			end
+			table.sort(cuts, function(a, b)
+				return a[1] < b[1]
+			end)
+			local start = r.from - ROAD_HALF
+			local pieces = {}
+			for _, cut in cuts do
+				if cut[1] > start then
+					table.insert(pieces, { start, cut[1] })
+				end
+				start = math.max(start, cut[2])
+			end
+			if r.to + ROAD_HALF > start then
+				table.insert(pieces, { start, r.to + ROAD_HALF })
+			end
+			for _, pc in pieces do
+				local a0, a1 = pc[1], pc[2]
+				if a1 - a0 < 2 then
+					continue
+				end
+				local l, m = a1 - a0, (a0 + a1) / 2
+				local swSize = if r.axis == "x" then Vector3.new(l, 0.5, 6) else Vector3.new(6, 0.5, l)
+				local cbSize = if r.axis == "x" then Vector3.new(l, 0.6, 0.4) else Vector3.new(0.4, 0.6, l)
+				part({ Name = "Sidewalk", Size = swSize, CFrame = CFrame.new(roadPoint(r, m, side * 15, 0.25)), Color = Color3.fromRGB(196, 192, 184), Material = Enum.Material.Concrete, Parent = parent })
+				part({ Name = "Curb", Size = cbSize, CFrame = CFrame.new(roadPoint(r, m, side * 12.2, 0.3)), Color = Color3.fromRGB(160, 156, 150), Material = Enum.Material.Concrete, Parent = parent })
+			end
+		end
+		-- postes de luz do lado oposto aos postes da rede (sul ou leste), um a cada 60
+		local k = 0
+		for a = r.from + 20, r.to - 20, 60 do
+			local pos = roadPoint(r, a, 17, 0.5)
+			if not nearCross(a, 20) then
+				k += 1
+				local dir = if r.axis == "x" then Vector3.new(0, 0, -1) else Vector3.new(-1, 0, 0)
+				World.streetLamp(pos, dir, parent, k % 2 == 1)
+			end
+		end
+		-- árvores no lado dos postes da rede (norte ou oeste), longe dos lotes e casas
+		for a = r.from + 45, r.to - 30, 70 do
+			local pos = roadPoint(r, a, -26, 0)
+			if r.name ~= "Alameda das Acácias" and not nearCross(a, 30) and isFree(pos.X, pos.Z, 6) then
+				tree(pos, parent, 0.9 + ((a // 70) % 3) * 0.1)
+			end
+		end
+	end
+
+	-- placas nas esquinas
+	for _, r in CityMap.Roads do
+		for _, c in crossings(r) do
+			if r.axis == "z" then
+				local q
+				for _, other in CityMap.Roads do
+					if other.axis == "x" and other.at == c.at then
+						q = other
+					end
+				end
+				local pos = Vector3.new(r.at - 17, 0.5, c.at - 17)
+				streetSign(pos, r.name, 90, parent)
+				if q then
+					streetSign(pos + Vector3.new(-2, 0, 2), q.name, 0, parent)
+				end
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------------
+-- Caminhos pela pista (moradores, técnicos e carro)
+-- ---------------------------------------------------------------------------
+-- As ruas viram um grafo (nós nos cruzamentos e nas pontas). O caminho vai do
+-- ponto de saída até a rua mais próxima, segue o menor trajeto pelos cruzamentos
+-- e sai da rua perto do destino.
+
+local roadNodes: { [string]: Vector3 } = {}
+local roadAdj: { [string]: { [string]: number } } = {}
+local roadStops: { [any]: { number } } = {}
+
+local function nodeKey(x: number, z: number): string
+	return string.format("%d,%d", math.floor(x + 0.5), math.floor(z + 0.5))
+end
+
+local function buildRoadGraph()
+	for _, r in CityMap.Roads do
+		local stops = { r.from, r.to }
+		for _, c in crossings(r) do
+			table.insert(stops, c.at)
+		end
+		table.sort(stops)
+		local uniq = {}
+		for _, s in stops do
+			if #uniq == 0 or math.abs(uniq[#uniq] - s) > 0.5 then
+				table.insert(uniq, s)
+			end
+		end
+		roadStops[r] = uniq
+		for i, s in uniq do
+			local p = roadPoint(r, s, 0, 0)
+			local key = nodeKey(p.X, p.Z)
+			roadNodes[key] = p
+			roadAdj[key] = roadAdj[key] or {}
+			if i > 1 then
+				local q = roadPoint(r, uniq[i - 1], 0, 0)
+				local prev = nodeKey(q.X, q.Z)
+				local d = math.abs(s - uniq[i - 1])
+				roadAdj[key][prev] = d
+				roadAdj[prev] = roadAdj[prev] or {}
+				roadAdj[prev][key] = d
+			end
+		end
+	end
+end
+
+-- Rua mais próxima de um ponto: (rua, ponto no eixo, chaves dos nós vizinhos)
+local function project(p: Vector3): (any, Vector3, string, string)
+	local best, bestD, bestPt = nil, math.huge, nil
+	for _, r in CityMap.Roads do
+		local along = if r.axis == "x" then p.X else p.Z
+		local cross = if r.axis == "x" then p.Z else p.X
+		local a = math.clamp(along, r.from, r.to)
+		local d = math.abs(cross - r.at) + math.abs(along - a)
+		if d < bestD then
+			best, bestD, bestPt = r, d, roadPoint(r, a, 0, 0)
+		end
+	end
+	local along = if best.axis == "x" then bestPt.X else bestPt.Z
+	local stops = roadStops[best]
+	local lo, hi = stops[1], stops[#stops]
+	for _, s in stops do
+		if s <= along + 0.01 then
+			lo = s
+		end
+	end
+	for i = #stops, 1, -1 do
+		if stops[i] >= along - 0.01 then
+			hi = stops[i]
+		end
+	end
+	local a, b = roadPoint(best, lo, 0, 0), roadPoint(best, hi, 0, 0)
+	return best, bestPt, nodeKey(a.X, a.Z), nodeKey(b.X, b.Z)
+end
+
+local function shortest(fromKeys: { [string]: number }, toKeys: { [string]: number }): { string }
+	local dist: { [string]: number } = {}
+	local prev: { [string]: string } = {}
+	local done: { [string]: boolean } = {}
+	for k, d in fromKeys do
+		dist[k] = d
+	end
+	while true do
+		local u, ud = nil, math.huge
+		for k, d in dist do
+			if not done[k] and d < ud then
+				u, ud = k, d
+			end
+		end
+		if not u then
+			break
+		end
+		done[u] = true
+		for v, w in roadAdj[u] or {} do
+			local nd = ud + w
+			if not dist[v] or nd < dist[v] then
+				dist[v] = nd
+				prev[v] = u
+			end
+		end
+	end
+	local bestEnd, bestTotal = nil, math.huge
+	for k, d in toKeys do
+		if dist[k] and dist[k] + d < bestTotal then
+			bestEnd, bestTotal = k, dist[k] + d
+		end
+	end
+	local out = {}
+	local k = bestEnd
+	while k do
+		table.insert(out, 1, k)
+		k = prev[k]
+	end
+	return out
+end
+
+-- Caminho entre dois pontos, sempre pela pista.
+-- mode "lane" (padrão): mão direita, a `lane` studs do eixo (moradores e carro).
+-- mode "nw": sempre do lado norte das ruas leste-oeste e do lado oeste das norte-sul,
+-- na linha dos postes (cabos de fibra).
+function World.path(from: Vector3, to: Vector3, y: number?, mode: string?, lane: number?): { Vector3 }
 	local h = y or 0.6
-	local pts = {}
-	local function add(x: number, z: number)
-		table.insert(pts, Vector3.new(x, h, z))
-	end
-	local a, b = onPalm(from), onPalm(to)
-	if a and b then
-		add(palmLane(from), from.Z)
-		add(palmLane(to), to.Z)
-	else
-		if a then
-			add(palmLane(from), from.Z)
-			add(palmLane(from), -8)
-		else
-			add(from.X, mainLane(from))
-		end
-		if b then
-			add(palmLane(to), -8)
-			add(palmLane(to), to.Z)
-		else
-			add(to.X, mainLane(to))
+	local off = lane or (if mode == "nw" then 16.5 else 7)
+	local rA, pA, a1, a2 = project(from)
+	local rB, pB, b1, b2 = project(to)
+	local center: { Vector3 } = { pA }
+	if rA ~= rB then
+		local fromKeys = { [a1] = (roadNodes[a1] - pA).Magnitude, [a2] = (roadNodes[a2] - pA).Magnitude }
+		local toKeys = { [b1] = (roadNodes[b1] - pB).Magnitude, [b2] = (roadNodes[b2] - pB).Magnitude }
+		for _, k in shortest(fromKeys, toKeys) do
+			table.insert(center, roadNodes[k])
 		end
 	end
-	table.insert(pts, Vector3.new(to.X, h, to.Z))
-	return pts
+	table.insert(center, pB)
+	-- tira pontos repetidos
+	local pts: { Vector3 } = {}
+	for _, p in center do
+		if #pts == 0 or (pts[#pts] - p).Magnitude > 0.5 then
+			table.insert(pts, p)
+		end
+	end
+	local out: { Vector3 } = {}
+	local function add(p: Vector3)
+		table.insert(out, Vector3.new(p.X, h, p.Z))
+	end
+	if #pts < 2 then
+		add(pts[1] + (if mode == "nw" then Vector3.new(0, 0, -off) else Vector3.zero))
+		table.insert(out, Vector3.new(to.X, h, to.Z))
+		return out
+	end
+	local function normal(a: Vector3, b: Vector3): Vector3
+		local d = b - a
+		d = Vector3.new(d.X, 0, d.Z).Unit
+		if mode == "nw" then
+			return if math.abs(d.X) > math.abs(d.Z) then Vector3.new(0, 0, -1) else Vector3.new(-1, 0, 0)
+		end
+		return Vector3.new(-d.Z, 0, d.X) -- mão direita
+	end
+	for i, p in pts do
+		local nPrev = if i > 1 then normal(pts[i - 1], p) else nil
+		local nNext = if i < #pts then normal(p, pts[i + 1]) else nil
+		if nPrev and nNext and math.abs(nPrev:Dot(nNext)) < 0.1 then
+			add(p + (nPrev + nNext) * off) -- esquina
+		elseif nPrev and nNext and nPrev:Dot(nNext) < -0.5 then
+			add(p + nPrev * off)
+			add(p + nNext * off)
+		else
+			add(p + (nPrev or nNext :: Vector3) * off)
+		end
+	end
+	table.insert(out, Vector3.new(to.X, h, to.Z))
+	return out
 end
 
 local function buildPlaza(parent: Instance): { Vector3 }
@@ -409,6 +642,258 @@ local function buildHouse(index: number, center: Vector3, facing: Vector3, side:
 end
 
 -- ---------------------------------------------------------------------------
+-- Jardim das Acácias: mansões do bairro nobre
+-- ---------------------------------------------------------------------------
+
+local MansionWalls = {
+	Color3.fromRGB(245, 243, 236),
+	Color3.fromRGB(222, 214, 198),
+	Color3.fromRGB(236, 232, 226),
+	Color3.fromRGB(205, 200, 190),
+}
+local MansionAccent = {
+	Color3.fromRGB(70, 56, 46), -- madeira escura
+	Color3.fromRGB(48, 52, 60), -- grafite
+	Color3.fromRGB(150, 110, 70), -- madeira clara
+	Color3.fromRGB(60, 70, 64), -- verde-musgo
+}
+
+-- Mansão de dois andares com jardim, piscina, garagem e muro com portão.
+-- facing aponta para a Alameda. Usa o mesmo formato de casa (House) da rede.
+local function buildMansion(index: number, center: Vector3, facing: Vector3, poleZ: number, parent: Instance): any
+	local model = Instance.new("Model")
+	model.Name = "Mansao" .. index
+	model.Parent = parent
+	local base = CFrame.lookAt(center, center + facing) -- local -Z = frente
+	local k = (index - 17) % 4 + 1
+	local wall = MansionWalls[k]
+	local accent = MansionAccent[k]
+	local glass = Color3.fromRGB(120, 170, 200)
+	local stone = Color3.fromRGB(176, 170, 160)
+	local dark = Color3.fromRGB(40, 42, 48)
+
+	local function lp(name: string, size: Vector3, offset: CFrame, color: Color3, extra: { [string]: any }?)
+		local props: { [string]: any } = { Name = name, Size = size, CFrame = base * offset, Color = color, Parent = model }
+		if extra then
+			for key, v in extra do
+				props[key] = v
+			end
+		end
+		return part(props)
+	end
+
+	-- terreno: gramado, calçada de pedra até o portão e entrada de carro
+	lp("Lawn", Vector3.new(64, 0.3, 50), CFrame.new(0, 0.15, -4), Color3.fromRGB(88, 160, 72), { Material = Enum.Material.Grass })
+	lp("Walk", Vector3.new(4, 0.35, 16), CFrame.new(-6, 0.2, -20), Color3.fromRGB(214, 206, 190), { Material = Enum.Material.Slate })
+	lp("Driveway", Vector3.new(10, 0.35, 18), CFrame.new(20, 0.2, -19), Color3.fromRGB(150, 150, 154), { Material = Enum.Material.Concrete })
+	-- muro baixo com portão
+	lp("WallL", Vector3.new(20, 3, 1), CFrame.new(-22, 1.5, -28.5), stone, { Material = Enum.Material.Limestone })
+	lp("WallM", Vector3.new(14, 3, 1), CFrame.new(6, 1.5, -28.5), stone, { Material = Enum.Material.Limestone })
+	lp("Gate", Vector3.new(4, 4, 0.3), CFrame.new(-6, 2, -28.5), dark, { Material = Enum.Material.Metal, CanCollide = false, Transparency = 0.2 })
+	for _, gx in { -9, -3, 15, 25 } do
+		lp("Pillar", Vector3.new(1.6, 4.4, 1.6), CFrame.new(gx, 2.2, -28.5), stone, { Material = Enum.Material.Limestone })
+	end
+	for _, gx in { -9, -3 } do
+		local lamp = lp("PillarLamp", Vector3.new(1, 1, 1), CFrame.new(gx, 4.9, -28.5), Color3.fromRGB(255, 236, 190), { Material = Enum.Material.Neon, CastShadow = false })
+		lamp.Name = "PillarLamp"
+	end
+
+	-- térreo: corpo, vidraças grandes e porta de madeira
+	lp("Ground", Vector3.new(32, 10, 22), CFrame.new(-4, 5.5, 6), wall, { Material = Enum.Material.Plaster })
+	lp("GlassFront", Vector3.new(14, 7, 0.3), CFrame.new(-12, 5, -5.1), glass, { Material = Enum.Material.Glass, Transparency = 0.3 })
+	lp("WoodPanel", Vector3.new(6, 10, 0.4), CFrame.new(2, 5.5, -5.2), accent, { Material = Enum.Material.WoodPlanks })
+	lp("Door", Vector3.new(3.4, 7.5, 0.3), CFrame.new(-6, 4.25, -5.3), Color3.fromRGB(90, 60, 40), { Material = Enum.Material.Wood })
+	lp("DoorHandle", Vector3.new(0.2, 1.6, 0.3), CFrame.new(-4.8, 4.5, -5.5), Color3.fromRGB(220, 190, 90), { Material = Enum.Material.Metal })
+	-- garagem integrada
+	lp("GarageDoor", Vector3.new(9, 7, 0.3), CFrame.new(8.5, 4, -5.1), Color3.fromRGB(110, 110, 116), { Material = Enum.Material.Metal })
+	-- 2º andar recuado, com sacada de vidro
+	lp("Upper", Vector3.new(26, 9, 18), CFrame.new(-7, 15, 8), wall, { Material = Enum.Material.Plaster })
+	lp("UpperGlass", Vector3.new(20, 6, 0.3), CFrame.new(-7, 15, -1.1), glass, { Material = Enum.Material.Glass, Transparency = 0.3 })
+	lp("Balcony", Vector3.new(26, 0.5, 6), CFrame.new(-7, 10.75, -2), Color3.fromRGB(230, 228, 222), { Material = Enum.Material.Concrete })
+	lp("BalconyRail", Vector3.new(26, 2.6, 0.2), CFrame.new(-7, 12.3, -4.9), Color3.fromRGB(190, 220, 235), { Material = Enum.Material.Glass, Transparency = 0.55 })
+	lp("Roof1", Vector3.new(34, 0.8, 24), CFrame.new(-4, 10.9, 6), dark, { Material = Enum.Material.Concrete })
+	lp("Roof2", Vector3.new(29, 0.8, 21), CFrame.new(-7, 19.9, 8), dark, { Material = Enum.Material.Concrete })
+	lp("Pergola", Vector3.new(10, 0.4, 7), CFrame.new(12, 11.6, 8), accent, { Material = Enum.Material.WoodPlanks })
+	-- placa com número e luz da fachada
+	local plate = lp("Number", Vector3.new(3.6, 1.2, 0.2), CFrame.new(-1, 8.6, -5.5), Color3.fromRGB(30, 34, 40))
+	textOn(plate, Enum.NormalId.Front, tostring(index), Color3.fromRGB(230, 200, 120))
+	local wallLight = lp("FacadeLight", Vector3.new(6, 0.25, 0.25), CFrame.new(-12, 9.2, -5.4), Color3.fromRGB(255, 236, 190), { Material = Enum.Material.Neon, CastShadow = false })
+	local pl = Instance.new("PointLight")
+	pl.Range = 14
+	pl.Brightness = 0.9
+	pl.Color = Color3.fromRGB(255, 226, 170)
+	pl.Parent = wallLight
+
+	-- piscina na lateral, com deck de madeira
+	lp("PoolDeck", Vector3.new(16, 0.6, 22), CFrame.new(-26, 0.3, 4), Color3.fromRGB(170, 130, 90), { Material = Enum.Material.WoodPlanks })
+	lp("PoolWater", Vector3.new(10, 0.3, 16), CFrame.new(-26, 0.55, 4), Color3.fromRGB(70, 180, 220), { Material = Enum.Material.Glass, Transparency = 0.15, CanCollide = false })
+	lp("Lounger", Vector3.new(2, 0.8, 5), CFrame.new(-19.5, 1, -2), Color3.fromRGB(245, 245, 240))
+	-- jardim: cerca viva e palmeiras
+	lp("Hedge", Vector3.new(18, 2.4, 1.6), CFrame.new(-21, 1.2, -26.5), Color3.fromRGB(62, 120, 56), { Material = Enum.Material.Grass })
+	palm(base * Vector3.new(-14, 0.3, -18), model)
+	palm(base * Vector3.new(28, 0.3, 2), model)
+
+	-- caixa da ONU na fachada, com LED de status (mesmo formato das casas)
+	local white = Color3.fromRGB(248, 248, 245)
+	local box = lp("OnuBox", Vector3.new(1.6, 2, 0.7), CFrame.new(4.5, 7.5, -5.75), white)
+	local led = lp("OnuLed", Vector3.new(0.35, 0.35, 0.1), CFrame.new(4.5, 7.9, -6.15), Color3.fromRGB(80, 80, 80), { Material = Enum.Material.Neon, CastShadow = false })
+	local onuTag = lp("OnuEtiqueta", Vector3.new(1.3, 0.55, 0.04), CFrame.new(4.5, 7.1, -6.12), Color3.fromRGB(248, 248, 248), { CanCollide = false })
+	textOn(onuTag, Enum.NormalId.Front, "ONU GPON", Color3.fromRGB(90, 95, 105))
+	CollectionService:AddTag(box, "OnuBox")
+
+	local want = lp("WantSign", Vector3.new(5, 2.4, 0.2), CFrame.new(10, 3.2, -29.4), Color3.fromRGB(255, 250, 230))
+	textOn(want, Enum.NormalId.Front, "Quero internet!", Color3.fromRGB(200, 60, 40))
+	lp("WantSignPost", Vector3.new(0.3, 2, 0.3), CFrame.new(10, 1, -29.3), Color3.fromRGB(110, 80, 50), { Name = "WantSignPost" })
+
+	return {
+		index = index,
+		model = model,
+		position = center,
+		doorPoint = (base * CFrame.new(-6, 0.5, -31)).Position,
+		yardPoint = (base * CFrame.new(-6, 0.5, -16)).Position,
+		box = box,
+		led = led,
+		wantSign = want,
+		side = if facing.Z > 0 then 4 else 5,
+		street = "Alameda das Acácias",
+		zone = "jardim",
+		cto = "",
+		dropMid = Vector3.new(box.Position.X, 14, poleZ),
+	}
+end
+
+-- ---------------------------------------------------------------------------
+-- Prédios públicos: Prefeitura, Escola, Delegacia e Hospital
+-- ---------------------------------------------------------------------------
+
+local CivicStyle = {
+	prefeitura = { label = "Prefeitura", sign = "PREFEITURA DA VILA AURORA", wall = Color3.fromRGB(240, 232, 214), trim = Color3.fromRGB(196, 170, 120), floors = 2 },
+	escola = { label = "Escola Municipal", sign = "ESCOLA MUNICIPAL VILA AURORA", wall = Color3.fromRGB(232, 150, 90), trim = Color3.fromRGB(250, 240, 220), floors = 2 },
+	policia = { label = "Delegacia de Polícia", sign = "DELEGACIA DE POLÍCIA", wall = Color3.fromRGB(226, 230, 238), trim = Color3.fromRGB(40, 70, 140), floors = 1 },
+	hospital = { label = "Hospital Municipal", sign = "HOSPITAL MUNICIPAL", wall = Color3.fromRGB(246, 248, 250), trim = Color3.fromRGB(200, 40, 50), floors = 3 },
+}
+World.CivicStyle = CivicStyle
+
+local function buildCivic(index: number, def: any, poleZ: number, parent: Instance): any
+	local st = CivicStyle[def.key]
+	local model = Instance.new("Model")
+	model.Name = st.label
+	model.Parent = parent
+	local w, d = def.w, def.d
+	local frontZ = CityMap.CivicFrontZ
+	local center = Vector3.new(def.x, 0, frontZ + d / 2)
+	local base = CFrame.lookAt(center, center + Vector3.new(0, 0, -1)) -- frente para a Avenida Central (norte)
+	local floorH = 9
+	local H = st.floors * floorH + 1
+	local glass = Color3.fromRGB(130, 180, 210)
+	local dark = Color3.fromRGB(40, 44, 52)
+
+	local function lp(name: string, size: Vector3, offset: CFrame, color: Color3, extra: { [string]: any }?)
+		local props: { [string]: any } = { Name = name, Size = size, CFrame = base * offset, Color = color, Parent = model }
+		if extra then
+			for key, v in extra do
+				props[key] = v
+			end
+		end
+		return part(props)
+	end
+
+	lp("Plot", Vector3.new(w + 8, 0.4, d + 8), CFrame.new(0, 0.2, 2), Color3.fromRGB(200, 196, 188), { Material = Enum.Material.Concrete })
+	lp("Body", Vector3.new(w, H, d), CFrame.new(0, H / 2 + 0.4, 0), st.wall, { Material = Enum.Material.Plaster })
+	lp("RoofTrim", Vector3.new(w + 1, 1, d + 1), CFrame.new(0, H + 0.9, 0), st.trim, { Material = Enum.Material.Concrete })
+	-- janelas: uma faixa de vidro por andar
+	for f = 1, st.floors do
+		local y = (f - 1) * floorH + 5.5
+		lp("WindowBand", Vector3.new(w - 6, 4.5, 0.3), CFrame.new(0, y, -d / 2 - 0.1), glass, { Material = Enum.Material.Glass, Transparency = 0.25 })
+		if f < st.floors then
+			lp("FloorTrim", Vector3.new(w + 0.4, 0.6, d + 0.4), CFrame.new(0, f * floorH + 0.4, 0), st.trim)
+		end
+	end
+	-- entrada com marquise e porta de vidro
+	lp("Entrance", Vector3.new(8, 7, 0.4), CFrame.new(0, 3.9, -d / 2 - 0.3), Color3.fromRGB(160, 200, 220), { Material = Enum.Material.Glass, Transparency = 0.35 })
+	lp("Canopy", Vector3.new(14, 0.6, 6), CFrame.new(0, 8.2, -d / 2 - 3), dark, { Material = Enum.Material.Metal })
+	lp("Steps", Vector3.new(14, 0.6, 3), CFrame.new(0, 0.5, -d / 2 - 2), Color3.fromRGB(215, 210, 200), { Material = Enum.Material.Concrete })
+	local sign = lp("Sign", Vector3.new(math.min(w - 4, 34), 2.6, 0.3), CFrame.new(0, H - 1.6, -d / 2 - 0.3), dark)
+	textOn(sign, Enum.NormalId.Front, st.sign, Color3.new(1, 1, 1))
+
+	-- detalhes de cada prédio
+	if def.key == "prefeitura" then
+		for i = 0, 5 do
+			local cx = -12.5 + i * 5
+			if math.abs(cx) > 3 then
+				lp("Column", Vector3.new(H - 1, 1.6, 1.6), CFrame.new(cx, (H - 1) / 2 + 0.4, -d / 2 - 4.5) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(250, 248, 240), { Shape = Enum.PartType.Cylinder, Material = Enum.Material.Marble })
+			end
+		end
+		lp("Portico", Vector3.new(30, 1.2, 8), CFrame.new(0, H - 0.2, -d / 2 - 4), Color3.fromRGB(250, 248, 240), { Material = Enum.Material.Marble })
+		lp("Dome", Vector3.new(12, 12, 12), CFrame.new(0, H + 2, 4), Color3.fromRGB(120, 150, 130), { Shape = Enum.PartType.Ball, Material = Enum.Material.Metal })
+		lp("FlagPole", Vector3.new(0.4, 16, 0.4), CFrame.new(-w / 2 - 2, 8.4, -d / 2 - 4), Color3.fromRGB(200, 200, 205), { Material = Enum.Material.Metal })
+		lp("Flag", Vector3.new(4, 2.6, 0.1), CFrame.new(-w / 2 - 4, 14.8, -d / 2 - 4), Color3.fromRGB(30, 120, 80), { CanCollide = false })
+		-- mural das licitações, na calçada da frente
+		local mural = lp("Mural", Vector3.new(8, 4.5, 0.3), CFrame.new(18, 3.4, -d / 2 - 7), Color3.fromRGB(30, 50, 90))
+		textOn(mural, Enum.NormalId.Front, "MURAL DE LICITAÇÕES\nPrefeitura · Escola · Delegacia · Hospital\n(aperte E)", Color3.new(1, 1, 1))
+		for _, mx in { 14.5, 21.5 } do
+			lp("MuralPe", Vector3.new(0.4, 1.4, 0.4), CFrame.new(mx, 0.9, -d / 2 - 7), Color3.fromRGB(60, 60, 64))
+		end
+	elseif def.key == "escola" then
+		lp("Court", Vector3.new(26, 0.3, 16), CFrame.new(0, 0.55, d / 2 + 13), Color3.fromRGB(70, 120, 170), { Material = Enum.Material.Concrete })
+		lp("CourtLine", Vector3.new(0.3, 0.05, 16), CFrame.new(0, 0.72, d / 2 + 13), Color3.new(1, 1, 1), { CanCollide = false })
+		lp("BellTower", Vector3.new(4, 6, 4), CFrame.new(w / 2 - 6, H + 3.4, 0), st.trim)
+	elseif def.key == "policia" then
+		lp("Stripe", Vector3.new(w + 0.2, 1.2, d + 0.2), CFrame.new(0, 2.2, 0), st.trim)
+		-- viatura estacionada na frente
+		local car = base * CFrame.new(w / 2 + 5, 0, -d / 2 + 7)
+		part({ Name = "Viatura", Size = Vector3.new(5, 2.6, 10), CFrame = car * CFrame.new(0, 1.8, 0), Color = Color3.fromRGB(245, 245, 245), Parent = model })
+		part({ Name = "ViaturaTopo", Size = Vector3.new(4.4, 1.6, 5), CFrame = car * CFrame.new(0, 3.8, 0.5), Color = Color3.fromRGB(30, 50, 110), Parent = model })
+		part({ Name = "GiroflexA", Size = Vector3.new(1.4, 0.5, 0.8), CFrame = car * CFrame.new(-0.8, 4.85, 0.5), Color = Color3.fromRGB(255, 40, 40), Material = Enum.Material.Neon, CastShadow = false, Parent = model })
+		part({ Name = "GiroflexB", Size = Vector3.new(1.4, 0.5, 0.8), CFrame = car * CFrame.new(0.8, 4.85, 0.5), Color = Color3.fromRGB(40, 90, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = model })
+	elseif def.key == "hospital" then
+		local cross = lp("CrossBg", Vector3.new(7, 7, 0.3), CFrame.new(-w / 2 + 7, H - 5, -d / 2 - 0.3), Color3.new(1, 1, 1))
+		cross.Name = "CrossBg"
+		lp("CrossV", Vector3.new(1.8, 5.4, 0.2), CFrame.new(-w / 2 + 7, H - 5, -d / 2 - 0.5), st.trim, { Material = Enum.Material.Neon, CastShadow = false })
+		lp("CrossH", Vector3.new(5.4, 1.8, 0.2), CFrame.new(-w / 2 + 7, H - 5, -d / 2 - 0.5), st.trim, { Material = Enum.Material.Neon, CastShadow = false })
+		local ps = lp("ProntoSocorro", Vector3.new(12, 1.4, 0.3), CFrame.new(w / 2 - 10, 9.2, -d / 2 - 0.4), st.trim)
+		textOn(ps, Enum.NormalId.Front, "PRONTO-SOCORRO", Color3.new(1, 1, 1))
+		lp("Helipad", Vector3.new(14, 0.3, 14), CFrame.new(0, H + 1.5, 4), Color3.fromRGB(60, 64, 70), { Material = Enum.Material.Concrete })
+	end
+
+	-- caixa da ONU (empresarial) na fachada
+	local white = Color3.fromRGB(248, 248, 245)
+	local bx = w / 2 - 4
+	local box = lp("OnuBox", Vector3.new(1.6, 2, 0.7), CFrame.new(bx, 6.5, -d / 2 - 0.35), white)
+	local led = lp("OnuLed", Vector3.new(0.35, 0.35, 0.1), CFrame.new(bx, 6.9, -d / 2 - 0.75), Color3.fromRGB(80, 80, 80), { Material = Enum.Material.Neon, CastShadow = false })
+	local tag = lp("OnuEtiqueta", Vector3.new(1.3, 0.55, 0.04), CFrame.new(bx, 6.1, -d / 2 - 0.72), Color3.fromRGB(248, 248, 248), { CanCollide = false })
+	textOn(tag, Enum.NormalId.Front, "ONU GPON", Color3.fromRGB(90, 95, 105))
+	CollectionService:AddTag(box, "OnuBox")
+	-- placa da licitação (mostra o provedor contratado)
+	local want = lp("WantSign", Vector3.new(7, 2.6, 0.2), CFrame.new(-w / 2 + 6, 3.2, -d / 2 - 5), Color3.fromRGB(255, 250, 230))
+	textOn(want, Enum.NormalId.Front, "Aguardando licitação", Color3.fromRGB(40, 70, 140))
+	lp("WantSignPost", Vector3.new(0.3, 2, 0.3), CFrame.new(-w / 2 + 6, 1, -d / 2 - 4.9), Color3.fromRGB(110, 80, 50), { Name = "WantSignPost" })
+	-- número do endereço
+	local plate = lp("Number", Vector3.new(2.4, 1.2, 0.2), CFrame.new(5.5, 7, -d / 2 - 0.35), Color3.fromRGB(30, 60, 110))
+	textOn(plate, Enum.NormalId.Front, tostring(index), Color3.new(1, 1, 1))
+
+	reserve(def.x - w / 2 - 4, def.x + w / 2 + 4, frontZ - 10, frontZ + d + 4)
+	return {
+		index = index,
+		model = model,
+		position = center,
+		doorPoint = (base * CFrame.new(0, 0.5, -d / 2 - 10)).Position,
+		yardPoint = (base * CFrame.new(0, 0.5, -d / 2 - 5)).Position,
+		box = box,
+		led = led,
+		wantSign = want,
+		side = 6,
+		street = "Avenida Central",
+		zone = "civico",
+		cto = "",
+		dropMid = Vector3.new(box.Position.X, 14, poleZ),
+		public = true,
+		org = def.key,
+		label = st.label,
+	}
+end
+
+-- ---------------------------------------------------------------------------
 -- Postes e caixas (splitter / CTO)
 -- ---------------------------------------------------------------------------
 
@@ -500,7 +985,10 @@ export type Isp = {
 }
 
 -- Deslocamento de cada prédio. O prédio 2 é uma cópia do 1, mais a leste na mesma calçada.
-World.IspOffsets = { Vector3.new(0, 0, 0), Vector3.new(290, 0, 0) }
+World.IspOffsets = {}
+for i, lot in CityMap.Lots do
+	World.IspOffsets[i] = Vector3.new(lot.offset[1], 0, lot.offset[2])
+end
 
 local function buildIsp(parent: Instance, slot: number): Isp
 	local model = Instance.new("Model")
@@ -804,7 +1292,7 @@ local function buildIsp(parent: Instance, slot: number): Isp
 		t.Text = text
 		t.Parent = bb
 	end
-	cableTag(trunkTag, "TRONCOS → Rua Principal e Palmeiras")
+	cableTag(trunkTag, "TRONCOS → rede neutra da cidade")
 	local upTag = P({ Name = "EtiquetaOperadora", Size = Vector3.new(0.4, 0.25, 0.05), CFrame = CFrame.new(upX, f3 + 8.4, zb + 1.85), Color = Color3.fromRGB(210, 50, 50), CanCollide = false, CastShadow = false })
 	cableTag(upTag, "Link da operadora (upstream)")
 
@@ -927,7 +1415,7 @@ local function buildIsp(parent: Instance, slot: number): Isp
 	spawn.TopSurface = SMOOTH
 	spawn.Duration = 0
 	spawn.Neutral = true
-	spawn.Enabled = slot == 1 -- quem entra nasce no prédio 1; depois nasce no prédio do seu provedor
+	spawn.Enabled = false -- quem entra nasce na Praça da Chegada; a equipe renasce no prédio do provedor (Providers)
 	spawn.CanCollide = false
 	spawn.Parent = model
 	local decal = spawn:FindFirstChildOfClass("Decal")
@@ -991,25 +1479,292 @@ local function buildIsp(parent: Instance, slot: number): Isp
 end
 
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- Lotes de provedor, cenário e montanhas
+-- ---------------------------------------------------------------------------
 
 export type WorldData = {
 	houses: { House },
 	poles: { [string]: Pole },
 	boxes: { [string]: BasePart },
-	isp: Isp, -- prédio 1 (atalho para isps[1])
-	isps: { Isp },
+	isps: { [number]: Isp }, -- só os prédios já construídos (por lote)
+	lots: { [number]: Model }, -- terrenos ainda vazios
 	plazaPoints: { Vector3 },
 	sidewalkPoints: { Vector3 },
 	palmPoints: { Vector3 },
+	parkPoints: { Vector3 },
+	jardimPoints: { Vector3 },
+	citySpawn: SpawnLocation,
 	cablesFolder: Folder,
 	npcFolder: Folder,
 	effectsFolder: Folder,
 }
 
+local root: Folder
+local data: any
+
+-- Terreno vazio com placa: "Construa aqui o seu provedor"
+local function buildLot(slot: number): Model
+	local off = World.IspOffsets[slot]
+	local R = CityMap.LotRect
+	local m = Instance.new("Model")
+	m.Name = "Lote" .. slot
+	m.Parent = root
+	local cx, cz = (R.x0 + R.x1) / 2 + off.X, (R.z0 + R.z1) / 2 + off.Z
+	local w, d = R.x1 - R.x0, R.z1 - R.z0
+	local function P(props: { [string]: any })
+		props.Parent = m
+		return part(props)
+	end
+	P({ Name = "Terra", Size = Vector3.new(w, 0.3, d), CFrame = CFrame.new(cx, 0.15, cz), Color = Color3.fromRGB(150, 118, 84), Material = Enum.Material.Ground })
+	local wood = Color3.fromRGB(150, 120, 80)
+	P({ Name = "CercaFundo", Size = Vector3.new(w, 2.4, 0.4), CFrame = CFrame.new(cx, 1.4, R.z0 + off.Z), Color = wood, Material = Enum.Material.WoodPlanks })
+	P({ Name = "CercaOeste", Size = Vector3.new(0.4, 2.4, d), CFrame = CFrame.new(R.x0 + off.X, 1.4, cz), Color = wood, Material = Enum.Material.WoodPlanks })
+	P({ Name = "CercaLeste", Size = Vector3.new(0.4, 2.4, d), CFrame = CFrame.new(R.x1 + off.X, 1.4, cz), Color = wood, Material = Enum.Material.WoodPlanks })
+	P({ Name = "Tijolos", Size = Vector3.new(6, 2, 4), CFrame = CFrame.new(cx - 20, 1.3, cz - 8), Color = Color3.fromRGB(170, 90, 60), Material = Enum.Material.Brick })
+	P({ Name = "Areia", Size = Vector3.new(8, 3, 8), CFrame = CFrame.new(cx + 22, 1, cz - 10) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(214, 190, 140), Material = Enum.Material.Sand })
+	for _, dx in { -6, 6 } do
+		P({ Name = "PlacaPoste", Size = Vector3.new(0.5, 8, 0.5), CFrame = CFrame.new(cx + dx, 4, R.z1 + off.Z - 3), Color = Color3.fromRGB(60, 60, 64), Material = Enum.Material.Metal })
+	end
+	local signPos = Vector3.new(cx, 7, R.z1 + off.Z - 3)
+	local sign = P({ Name = "PlacaLote", Size = Vector3.new(16, 5, 0.4), CFrame = CFrame.lookAt(signPos, signPos + Vector3.new(0, 0, 1)), Color = Color3.fromRGB(20, 40, 70) })
+	local lot = CityMap.Lots[slot]
+	textOn(sign, Enum.NormalId.Front, string.format("LOTE %d · TERRENO PARA PROVEDOR\n%s · Construa aqui o seu provedor (E)", slot, lot.street), Color3.fromRGB(120, 210, 255))
+	textOn(sign, Enum.NormalId.Back, string.format("LOTE %d", slot), Color3.new(1, 1, 1))
+	sign:SetAttribute("Lot", slot)
+	local pp = Instance.new("ProximityPrompt")
+	pp.Name = "ConstruirPrompt"
+	pp.ActionText = "Construir provedor"
+	pp.ObjectText = "Lote " .. slot
+	pp.KeyboardKeyCode = Enum.KeyCode.E
+	pp.MaxActivationDistance = 16
+	pp.RequiresLineOfSight = false
+	pp.Parent = sign
+	CollectionService:AddTag(sign, "LotSign")
+	return m
+end
+
+-- Constrói o prédio do provedor no lote (chamado quando alguém abre um provedor)
+function World.buildIsp(slot: number): Isp
+	if data.isps[slot] then
+		return data.isps[slot]
+	end
+	if data.lots[slot] then
+		data.lots[slot]:Destroy()
+		data.lots[slot] = nil
+	end
+	local isp = buildIsp(root, slot)
+	data.isps[slot] = isp
+	return isp
+end
+
+-- Desmonta o prédio (provedor fechou): o lote volta a ficar vazio
+function World.destroyIsp(slot: number)
+	local isp = data.isps[slot]
+	if isp then
+		isp.model:Destroy()
+		data.isps[slot] = nil
+	end
+	if not data.lots[slot] then
+		data.lots[slot] = buildLot(slot)
+	end
+end
+
+-- Praça da Chegada: onde quem entra no jogo nasce, com quiosque da wiki e mapa
+local function buildArrival(parent: Instance): SpawnLocation
+	local c = Vector3.new(CityMap.CitySpawn.x, 0, CityMap.CitySpawn.z)
+	part({ Name = "PracaChegada", Size = Vector3.new(34, 0.4, 26), CFrame = CFrame.new(c + Vector3.new(0, 0.2, 2)), Color = Color3.fromRGB(210, 196, 172), Material = Enum.Material.Pebble, Parent = parent })
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "ChegadaSpawn"
+	spawn.Anchored = true
+	spawn.Size = Vector3.new(10, 0.2, 8)
+	spawn.CFrame = CFrame.new(c + Vector3.new(0, 0.5, 6))
+	spawn.Color = Config.FiberColors[1]
+	spawn.Material = Enum.Material.Neon
+	spawn.Transparency = 0.6
+	spawn.TopSurface = SMOOTH
+	spawn.Duration = 0
+	spawn.Neutral = true
+	spawn.Enabled = true
+	spawn.CanCollide = false
+	spawn.Parent = parent
+	local decal = spawn:FindFirstChildOfClass("Decal")
+	if decal then
+		decal:Destroy()
+	end
+	-- placa de boas-vindas e mapa da cidade
+	local board = part({ Name = "MapaCidade", Size = Vector3.new(14, 7, 0.4), CFrame = CFrame.lookAt(c + Vector3.new(6, 5, -8), c + Vector3.new(6, 5, 10)), Color = Color3.fromRGB(20, 40, 70), Parent = parent })
+	textOn(board, Enum.NormalId.Front, "BEM-VINDO À " .. string.upper(Config.CityName) .. "\nLotes de provedor: 2 na Rua Principal, 2 na Av. Central, 1 na Av. Sul\nAv. Central: Prefeitura, Escola, Delegacia e Hospital\nAv. Sul → Jardim das Acácias (bairro nobre)\nAperte P para abrir o seu provedor", Color3.new(1, 1, 1))
+	for _, dx in { -1, 13 } do
+		part({ Name = "MapaPoste", Size = Vector3.new(0.5, 9, 0.5), CFrame = CFrame.new(c + Vector3.new(dx, 4.5, -8.4)), Color = Color3.fromRGB(60, 60, 64), Material = Enum.Material.Metal, Parent = parent })
+	end
+	-- base do quiosque da wiki (o WikiService monta o quiosque em cima)
+	part({ Name = "QuiosqueBase", Size = Vector3.new(1, 0.2, 1), CFrame = CFrame.new(c + Vector3.new(-8, 0.4, -6)), Transparency = 1, CanCollide = false, Parent = parent })
+	tree(c + Vector3.new(-14, 0.4, 10), parent, 0.8)
+	tree(c + Vector3.new(14, 0.4, 10), parent, 0.8)
+	bench(CFrame.new(c + Vector3.new(0, 0.4, 13)), parent)
+	return spawn
+end
+
+-- Parque da Vila (atrás dos prédios públicos): trilhas, lago, árvores e bancos
+local function buildPark(parent: Instance): { Vector3 }
+	local R = CityMap.Park
+	local cx, cz = (R.x0 + R.x1) / 2, (R.z0 + R.z1) / 2
+	local w, d = R.x1 - R.x0, R.z1 - R.z0
+	local trail = Color3.fromRGB(205, 186, 150)
+	part({ Name = "TrilhaLesteOeste", Size = Vector3.new(w, 0.3, 5), CFrame = CFrame.new(cx, 0.15, cz), Color = trail, Material = Enum.Material.Pebble, Parent = parent })
+	part({ Name = "TrilhaNorteSul", Size = Vector3.new(5, 0.3, d), CFrame = CFrame.new(cx, 0.15, cz), Color = trail, Material = Enum.Material.Pebble, Parent = parent })
+	local lake = Vector3.new(cx + 70, 0, cz - 35)
+	part({ Name = "Lago", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 46, 46), CFrame = CFrame.new(lake + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(70, 150, 200), Material = Enum.Material.Glass, Transparency = 0.2, CanCollide = false, Parent = parent })
+	part({ Name = "LagoBorda", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 50, 50), CFrame = CFrame.new(lake + Vector3.new(0, 0.12, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(150, 140, 120), Material = Enum.Material.Slate, Parent = parent })
+	local rng = Random.new(11)
+	for _ = 1, 16 do
+		local x = rng:NextNumber(R.x0 + 8, R.x1 - 8)
+		local z = rng:NextNumber(R.z0 + 8, R.z1 - 8)
+		if math.abs(x - cx) > 8 and math.abs(z - cz) > 8 and (Vector3.new(x, 0, z) - lake).Magnitude > 32 then
+			tree(Vector3.new(x, 0, z), parent, rng:NextNumber(0.9, 1.3))
+		end
+	end
+	for _, b in { { -20, 6, 180 }, { 20, 6, 180 }, { -20, -6, 0 }, { 20, -6, 0 } } do
+		bench(CFrame.new(cx + b[1], 0.3, cz + b[2]) * CFrame.Angles(0, math.rad(b[3]), 0), parent)
+	end
+	local sign = part({ Name = "PlacaParque", Size = Vector3.new(10, 2, 0.3), CFrame = CFrame.new(cx, 3, R.z0 + 2), Color = Color3.fromRGB(40, 90, 50), Parent = parent })
+	textOn(sign, Enum.NormalId.Front, "PARQUE DA VILA", Color3.new(1, 1, 1))
+	textOn(sign, Enum.NormalId.Back, "PARQUE DA VILA", Color3.new(1, 1, 1))
+	return {
+		Vector3.new(cx - 18, 0.6, cz + 3),
+		Vector3.new(cx + 18, 0.6, cz - 3),
+		Vector3.new(cx, 0.6, cz + 30),
+		Vector3.new(cx, 0.6, cz - 30),
+		Vector3.new(cx - 60, 0.6, cz),
+		lake + Vector3.new(-28, 0.6, 0),
+	}
+end
+
+-- Campo de futebol entre a Rua Principal e a Avenida Sul
+local function buildField(parent: Instance)
+	local c = Vector3.new(CityMap.Field.x, 0, CityMap.Field.z)
+	local w, d = 84, 54
+	part({ Name = "Campo", Size = Vector3.new(w + 6, 0.3, d + 6), CFrame = CFrame.new(c + Vector3.new(0, 0.15, 0)), Color = Color3.fromRGB(70, 150, 70), Material = Enum.Material.Grass, Parent = parent })
+	local white = Color3.fromRGB(245, 245, 245)
+	local function line(size: Vector3, pos: Vector3)
+		part({ Name = "LinhaCampo", Size = size, CFrame = CFrame.new(c + pos), Color = white, CanCollide = false, CastShadow = false, Parent = parent })
+	end
+	line(Vector3.new(w, 0.05, 0.5), Vector3.new(0, 0.33, -d / 2))
+	line(Vector3.new(w, 0.05, 0.5), Vector3.new(0, 0.33, d / 2))
+	line(Vector3.new(0.5, 0.05, d), Vector3.new(-w / 2, 0.33, 0))
+	line(Vector3.new(0.5, 0.05, d), Vector3.new(w / 2, 0.33, 0))
+	line(Vector3.new(0.5, 0.05, d), Vector3.new(0, 0.33, 0))
+	for _, sx in { -1, 1 } do
+		local gx = sx * (w / 2)
+		part({ Name = "Trave", Size = Vector3.new(0.5, 6, 0.5), CFrame = CFrame.new(c + Vector3.new(gx, 3, -6)), Color = white, Parent = parent })
+		part({ Name = "Trave", Size = Vector3.new(0.5, 6, 0.5), CFrame = CFrame.new(c + Vector3.new(gx, 3, 6)), Color = white, Parent = parent })
+		part({ Name = "Travessao", Size = Vector3.new(0.5, 0.5, 12.5), CFrame = CFrame.new(c + Vector3.new(gx, 6, 0)), Color = white, Parent = parent })
+	end
+end
+
+-- Jardim das Acácias: portal na entrada, palmeiras na Alameda e a praça com chafariz
+local function buildJardimDecor(parent: Instance): { Vector3 }
+	local z = 330
+	local gold = Color3.fromRGB(196, 170, 110)
+	for _, sz in { -17, 17 } do
+		part({ Name = "PortalPilar", Size = Vector3.new(3, 22, 3), CFrame = CFrame.new(-268, 11, z + sz), Color = Color3.fromRGB(230, 225, 214), Material = Enum.Material.Limestone, Parent = parent })
+	end
+	local arch = part({ Name = "PortalViga", Size = Vector3.new(2, 3, 37), CFrame = CFrame.new(-268, 23.5, z), Color = Color3.fromRGB(230, 225, 214), Material = Enum.Material.Limestone, Parent = parent })
+	local plate = part({ Name = "PortalPlaca", Size = Vector3.new(0.3, 2.4, 26), CFrame = CFrame.new(-269.2, 23.5, z), Color = Color3.fromRGB(40, 44, 52), Parent = parent })
+	textOn(plate, Enum.NormalId.Left, "JARDIM DAS ACÁCIAS", gold)
+	textOn(plate, Enum.NormalId.Right, "JARDIM DAS ACÁCIAS", gold)
+	local _ = arch
+	-- palmeiras entre as mansões, dos dois lados
+	for _, x in { -260, -140, -20, 100, 220 } do
+		palm(Vector3.new(x, 0.3, z - 21), parent)
+		palm(Vector3.new(x, 0.3, z + 21), parent)
+	end
+	-- praça com chafariz no fim da Alameda
+	local c = Vector3.new(300, 0, z)
+	part({ Name = "PracaAcacias", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 64, 64), CFrame = CFrame.new(c + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(225, 215, 196), Material = Enum.Material.Marble, Parent = parent })
+	part({ Name = "Chafariz", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.6, 16, 16), CFrame = CFrame.new(c + Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(210, 210, 214), Material = Enum.Material.Marble, Parent = parent })
+	part({ Name = "ChafarizAgua", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.2, 14, 14), CFrame = CFrame.new(c + Vector3.new(0, 1.85, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(90, 170, 225), Material = Enum.Material.Glass, Transparency = 0.25, CanCollide = false, Parent = parent })
+	part({ Name = "ChafarizColuna", Size = Vector3.new(1.6, 6, 1.6), CFrame = CFrame.new(c + Vector3.new(0, 4, 0)), Color = Color3.fromRGB(210, 210, 214), Material = Enum.Material.Marble, Parent = parent })
+	for a = 0, 270, 90 do
+		local p = c + CFrame.Angles(0, math.rad(a), 0) * Vector3.new(0, 0, 24)
+		bench(CFrame.lookAt(p + Vector3.new(0, 0.4, 0), c + Vector3.new(0, 0.4, 0)) * CFrame.Angles(0, math.rad(180), 0), parent)
+	end
+	return {
+		c + Vector3.new(-14, 0.6, 14),
+		c + Vector3.new(14, 0.6, -14),
+		Vector3.new(-140, 0.6, z - 15),
+		Vector3.new(-20, 0.6, z + 15),
+		Vector3.new(100, 0.6, z - 15),
+		Vector3.new(220, 0.6, z + 15),
+	}
+end
+
+-- Perto de alguma rua (para a mata não nascer em cima da pista)
+local function nearRoad(x: number, z: number, dist: number): boolean
+	for _, r in CityMap.Roads do
+		local along = if r.axis == "x" then x else z
+		local cross = if r.axis == "x" then z else x
+		if along > r.from - dist and along < r.to + dist and math.abs(cross - r.at) < dist then
+			return true
+		end
+	end
+	return false
+end
+
+-- Mata de pinheiros nas bordas da cidade (antes das montanhas)
+local function buildForest(parent: Instance)
+	local B = CityMap.Bounds
+	local rng = Random.new(23)
+	local step = 30
+	for x = B.minX + 10, B.maxX - 10, step do
+		for z = B.minZ + 10, B.maxZ - 10, step do
+			local edge = math.min(x - B.minX, B.maxX - x, z - B.minZ, B.maxZ - z)
+			-- mais denso perto da borda, raro no meio da cidade
+			local chance = if edge < 40 then 0.75 elseif edge < 90 then 0.35 else 0.06
+			local px, pz = x + rng:NextNumber(-10, 10), z + rng:NextNumber(-10, 10)
+			if rng:NextNumber() < chance and not nearRoad(px, pz, 24) and isFree(px, pz, 10) then
+				pine(Vector3.new(px, 0, pz), parent, rng:NextNumber(0.9, 1.5))
+			end
+		end
+	end
+end
+
+-- Montanhas e morros em volta da cidade (Terrain: leve para o celular)
+local function buildMountains()
+	local T = workspace.Terrain
+	local B = CityMap.Bounds
+	local rng = Random.new(7)
+	local function ring(dist: number, step: number, rmin: number, rmax: number, ymin: number, ymax: number, mat: Enum.Material)
+		local x0, x1, z0, z1 = B.minX - dist, B.maxX + dist, B.minZ - dist, B.maxZ + dist
+		local pts = {}
+		for x = x0, x1, step do
+			table.insert(pts, Vector3.new(x, 0, z0))
+			table.insert(pts, Vector3.new(x, 0, z1))
+		end
+		for z = z0 + step, z1 - step, step do
+			table.insert(pts, Vector3.new(x0, 0, z))
+			table.insert(pts, Vector3.new(x1, 0, z))
+		end
+		for i, p in pts do
+			local r = rng:NextNumber(rmin, rmax)
+			local c = Vector3.new(p.X + rng:NextNumber(-25, 25), rng:NextNumber(ymin, ymax), p.Z + rng:NextNumber(-25, 25))
+			T:FillBall(c, r, mat)
+			if i % 6 == 0 then
+				task.wait()
+			end
+		end
+	end
+	-- chão de terreno embaixo das montanhas (o gramado da cidade acaba antes)
+	ring(40, 70, 55, 85, -42, -18, Enum.Material.Grass) -- morros verdes perto da cidade
+	ring(140, 95, 85, 130, -45, -5, Enum.Material.LeafyGrass) -- serra com mata
+	ring(250, 120, 100, 150, -35, 15, Enum.Material.Rock) -- picos de pedra ao fundo
+end
+
 function World.build(): WorldData
-	local root = workspace:FindFirstChild("VilaAurora")
-	if root then
-		root:Destroy()
+	local old = workspace:FindFirstChild("VilaAurora")
+	if old then
+		old:Destroy()
 	end
 	local baseplate = workspace:FindFirstChild("Baseplate")
 	if baseplate then
@@ -1018,35 +1773,90 @@ function World.build(): WorldData
 	root = Instance.new("Folder")
 	root.Name = "VilaAurora"
 	root.Parent = workspace
+	table.clear(reserved)
 
 	setupLighting()
+	buildRoadGraph()
+
+	-- áreas ocupadas (antes das árvores)
+	local R = CityMap.LotRect
+	for _, off in World.IspOffsets do
+		reserve(R.x0 + off.X - 4, R.x1 + off.X + 4, R.z0 + off.Z - 4, R.z1 + off.Z + 6)
+	end
+	local mainXs = { -40, 10, 60, 110 }
+	local palmZs = { -60, -110, -160, -210 }
+	for _, x in mainXs do
+		reserve(x - 16, x + 16, -58, -14)
+		reserve(x - 16, x + 16, 14, 58)
+	end
+	for _, z in palmZs do
+		reserve(World.PalmX - 58, World.PalmX - 14, z - 16, z + 16)
+		reserve(World.PalmX + 14, World.PalmX + 58, z - 16, z + 16)
+	end
+	for _, x in CityMap.MansionXs do
+		reserve(x - 36, x + 36, CityMap.MansionNorthZ - 26, CityMap.MansionNorthZ + 32)
+		reserve(x - 36, x + 36, CityMap.MansionSouthZ - 32, CityMap.MansionSouthZ + 26)
+	end
+	for _, c in CityMap.Civic do
+		reserve(c.x - c.w / 2 - 8, c.x + c.w / 2 + 8, CityMap.CivicFrontZ - 10, CityMap.CivicFrontZ + c.d + 20)
+	end
+	reserve(-145, -95, 26, 58) -- praça
+	reserve(CityMap.Field.x - 50, CityMap.Field.x + 50, CityMap.Field.z - 34, CityMap.Field.z + 34)
+	reserve(CityMap.CitySpawn.x - 20, CityMap.CitySpawn.x + 20, CityMap.CitySpawn.z - 14, CityMap.CitySpawn.z + 18)
+	reserve(CityMap.Park.x0, CityMap.Park.x1, CityMap.Park.z0, CityMap.Park.z1)
+	reserve(262, 338, 298, 362) -- praça das Acácias
+
 	local env = folder("Cenario", root)
-	buildGround(env)
+	buildRoads(env)
 	local plazaPoints = buildPlaza(env)
-	local isps = { buildIsp(root, 1), buildIsp(root, 2) }
-	local isp = isps[1]
+	local citySpawn = buildArrival(env)
+	local parkPoints = buildPark(env)
+	buildField(env)
+	local jardimPoints = buildJardimDecor(env)
+	buildForest(folder("Mata", root))
+	task.spawn(buildMountains)
+
+	-- lotes de provedor: começam vazios, o prédio é construído quando alguém abre um provedor
+	data = { isps = {}, lots = {} }
+	for slot = 1, #CityMap.Lots do
+		data.lots[slot] = buildLot(slot)
+	end
 
 	local houseFolder = folder("Casas", root)
 	local houses = {}
-	local xs = { -40, 10, 60, 110 }
-	for i, x in xs do
+	for i, x in mainXs do
 		table.insert(houses, buildHouse(i, Vector3.new(x, 0, -36), Vector3.new(0, 0, 1), -1, houseFolder))
 	end
-	for i, x in xs do
+	for i, x in mainXs do
 		table.insert(houses, buildHouse(i + 4, Vector3.new(x, 0, 36), Vector3.new(0, 0, -1), 1, houseFolder))
 	end
 	-- Rua das Palmeiras: casas 9 a 12 no lado oeste, 13 a 16 no lado leste
-	local zs = { -60, -110, -160, -210 }
-	for i, z in zs do
+	for i, z in palmZs do
 		table.insert(houses, buildHouse(8 + i, Vector3.new(World.PalmX - 36, 0, z), Vector3.new(1, 0, 0), 2, houseFolder))
 	end
-	for i, z in zs do
+	for i, z in palmZs do
 		table.insert(houses, buildHouse(12 + i, Vector3.new(World.PalmX + 36, 0, z), Vector3.new(-1, 0, 0), 3, houseFolder))
 	end
+	-- Jardim das Acácias: mansões 17 a 20 (lado norte) e 21 a 24 (lado sul)
+	local alamedaZ = 330
+	for i, x in CityMap.MansionXs do
+		table.insert(houses, buildMansion(16 + i, Vector3.new(x, 0, CityMap.MansionNorthZ), Vector3.new(0, 0, 1), alamedaZ - 16.5, houseFolder))
+	end
+	for i, x in CityMap.MansionXs do
+		table.insert(houses, buildMansion(20 + i, Vector3.new(x, 0, CityMap.MansionSouthZ), Vector3.new(0, 0, -1), alamedaZ + 16.5, houseFolder))
+	end
+	-- prédios públicos 25 a 28
+	local civicFolder = folder("PredioPublicos", root)
+	for i, def in CityMap.Civic do
+		table.insert(houses, buildCivic(24 + i, def, -300 + 16.5, civicFolder))
+	end
 	for _, h in houses do
-		h.cto = if h.index <= 4 then "CTO_A" elseif h.index <= 8 then "CTO_B" elseif h.index <= 12 then "CTO_C" else "CTO_D"
+		local i = h.index
+		h.cto = if i <= 4 then "CTO_A" elseif i <= 8 then "CTO_B" elseif i <= 12 then "CTO_C" elseif i <= 16 then "CTO_D" elseif i <= 20 then "CTO_E" elseif i <= 24 then "CTO_F" else "CTO_G"
+		h.zone = h.zone or (if i <= 8 then "centro" else "palmeiras")
 	end
 
+	-- postes da rede
 	local poleFolder = folder("Postes", root)
 	local poles: { [string]: Pole } = {}
 	local north = { -85, -60, -15, 35, 85, 135, 185, 235 }
@@ -1061,40 +1871,103 @@ function World.build(): WorldData
 		poles["W" .. z] = buildPole("PosteW" .. z, World.PalmX - 16.5, z, poleFolder)
 		poles["E" .. z] = buildPole("PosteE" .. z, World.PalmX + 16.5, z, poleFolder)
 	end
+	-- Alameda das Acácias: postes dos dois lados
+	for x = -240, 240, 60 do
+		poles["AN" .. x] = buildPole("PosteAN" .. x, x, alamedaZ - 16.5, poleFolder)
+		poles["AS" .. x] = buildPole("PosteAS" .. x, x, alamedaZ + 16.5, poleFolder)
+	end
+	-- Avenida Central: lado sul (prédios públicos) e o poste do splitter no lado norte
+	for x = -65, 235, 50 do
+		poles["CS" .. x] = buildPole("PosteCS" .. x, x, -300 + 16.5, poleFolder)
+	end
+	poles.CN85 = buildPole("PosteCN85", 85, -300 - 16.5, poleFolder)
+	-- linha de postes no lado norte (ou oeste) de todas as ruas, por onde passam os troncos
+	local function hasPole(x: number, z: number): boolean
+		for _, p in poles do
+			if math.abs(p.base.X - x) < 12 and math.abs(p.base.Z - z) < 12 then
+				return true
+			end
+		end
+		return false
+	end
+	for _, r in CityMap.Roads do
+		if r.name == "Alameda das Acácias" then
+			continue -- a Alameda já tem postes dos dois lados
+		end
+		local cross = crossings(r)
+		local start = if r.axis == "x" then 35 else -35
+		local first = start + 50 * math.ceil((r.from - start) / 50)
+		for a = first, r.to, 50 do
+			local near = false
+			for _, c in cross do
+				if math.abs(a - c.at) < 20 then
+					near = true
+				end
+			end
+			local pos = roadPoint(r, a, -16.5, 0)
+			if not near and not hasPole(pos.X, pos.Z) then
+				local key = string.format("G%d_%d", math.floor(pos.X), math.floor(pos.Z))
+				poles[key] = buildPole("Poste" .. key, pos.X, pos.Z, poleFolder)
+			end
+		end
+	end
+
+	local boxColor, splColor = Color3.fromRGB(30, 30, 35), Color3.fromRGB(60, 60, 65)
 	local boxes = {
-		splitter = buildBox("SplitterPrimario", "Splitter 1:2", poles["N-60"], Color3.fromRGB(60, 60, 65), poleFolder),
-		ctoA = buildBox("CTO_A", "CTO A", poles["N35"], Color3.fromRGB(30, 30, 35), poleFolder),
-		ctoB = buildBox("CTO_B", "CTO B", poles["S35"], Color3.fromRGB(30, 30, 35), poleFolder),
-		splitter2 = buildBox("SplitterPalmeiras", "Splitter 1:2 Palmeiras", poles["W-35"], Color3.fromRGB(60, 60, 65), poleFolder, Vector3.new(0.9, 0, 0)),
-		ctoC = buildBox("CTO_C", "CTO C", poles["W-135"], Color3.fromRGB(30, 30, 35), poleFolder, Vector3.new(0.9, 0, 0)),
-		ctoD = buildBox("CTO_D", "CTO D", poles["E-135"], Color3.fromRGB(30, 30, 35), poleFolder, Vector3.new(-0.9, 0, 0)),
+		splitter = buildBox("SplitterPrimario", "Splitter 1:2", poles["N-60"], splColor, poleFolder),
+		ctoA = buildBox("CTO_A", "CTO A", poles["N35"], boxColor, poleFolder),
+		ctoB = buildBox("CTO_B", "CTO B", poles["S35"], boxColor, poleFolder),
+		splitter2 = buildBox("SplitterPalmeiras", "Splitter 1:2 Palmeiras", poles["W-35"], splColor, poleFolder, Vector3.new(0.9, 0, 0)),
+		ctoC = buildBox("CTO_C", "CTO C", poles["W-135"], boxColor, poleFolder, Vector3.new(0.9, 0, 0)),
+		ctoD = buildBox("CTO_D", "CTO D", poles["E-135"], boxColor, poleFolder, Vector3.new(-0.9, 0, 0)),
+		splitter3 = buildBox("SplitterAcacias", "Splitter 1:2 Acácias", poles["AN-240"], splColor, poleFolder, Vector3.new(0, 0, 0.9)),
+		ctoE = buildBox("CTO_E", "CTO E", poles["AN0"], boxColor, poleFolder, Vector3.new(0, 0, 0.9)),
+		ctoF = buildBox("CTO_F", "CTO F", poles["AS0"], boxColor, poleFolder, Vector3.new(0, 0, -0.9)),
+		splitter4 = buildBox("SplitterCivico", "Splitter 1:2 Centro Cívico", poles.CN85, splColor, poleFolder, Vector3.new(0, 0, 0.9)),
+		ctoG = buildBox("CTO_G", "CTO G", poles.CS85, boxColor, poleFolder, Vector3.new(0, 0, -0.9)),
 	}
 
+	-- pontos de passeio dos moradores
 	local sidewalkPoints = {}
 	for x = -100, 140, 30 do
 		table.insert(sidewalkPoints, Vector3.new(x, 0.6, -14))
 		table.insert(sidewalkPoints, Vector3.new(x + 10, 0.6, 14))
 	end
-	-- calçadas da Rua das Palmeiras (os moradores de lá passeiam por perto de casa)
 	local palmPoints = {}
 	for z = -40, -240, -40 do
 		table.insert(palmPoints, Vector3.new(World.PalmX - 15, 0.6, z))
 		table.insert(palmPoints, Vector3.new(World.PalmX + 15, 0.6, z - 20))
 	end
+	for _, h in houses do
+		if h.zone == "jardim" then
+			h.walkPoints = jardimPoints
+		elseif h.zone == "palmeiras" then
+			h.walkPoints = palmPoints
+		elseif h.zone == "centro" then
+			local pts = table.clone(plazaPoints)
+			for _, p in sidewalkPoints do
+				table.insert(pts, p)
+			end
+			for _, p in parkPoints do
+				table.insert(pts, p)
+			end
+			h.walkPoints = pts
+		end
+	end
 
-	return {
-		houses = houses,
-		poles = poles,
-		boxes = boxes,
-		isp = isp,
-		isps = isps,
-		plazaPoints = plazaPoints,
-		sidewalkPoints = sidewalkPoints,
-		palmPoints = palmPoints,
-		cablesFolder = folder("Cabos", root),
-		npcFolder = folder("Moradores", root),
-		effectsFolder = folder("Efeitos", root),
-	}
+	data.houses = houses
+	data.poles = poles
+	data.boxes = boxes
+	data.plazaPoints = plazaPoints
+	data.sidewalkPoints = sidewalkPoints
+	data.palmPoints = palmPoints
+	data.parkPoints = parkPoints
+	data.jardimPoints = jardimPoints
+	data.citySpawn = citySpawn
+	data.cablesFolder = folder("Cabos", root)
+	data.npcFolder = folder("Moradores", root)
+	data.effectsFolder = folder("Efeitos", root)
+	return data
 end
 
 return World

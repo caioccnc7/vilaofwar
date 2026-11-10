@@ -36,7 +36,16 @@ local OriginText = { balcao = "no balcão", telefone = "por telefone", erp = "pe
 local function residentName(index: number): string
 	local ok, Residents = pcall(require, script.Parent.ResidentService)
 	local r = ok and Residents.list and Residents.list[index]
-	return if r then r.name else "Casa " .. index
+	if r and r.index == index then
+		return r.name
+	end
+	-- prédio público (licitação): o nome do órgão
+	local okNet, Net = pcall(require, script.Parent.NetworkService)
+	local h = okNet and Net.houses and Net.houses[index]
+	if h and h.house.label then
+		return h.house.label
+	end
+	return "Casa " .. index
 end
 
 function ErpModule.new(P: any, worldData: any, netService: any): any

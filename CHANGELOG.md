@@ -2,6 +2,16 @@
 
 Tudo o que entrou no jogo, do mais novo para o mais antigo. É o mesmo conteúdo da página **Novidades** da wiki do jogo (`src/shared/Wiki.luau`).
 
+## 10/11/2026 · cidade ampliada
+
+- Cidade muito maior, ocupando todo o terreno: Avenida Central, Avenida Sul, Rua da Serra e Rua do Rio, parque com lago, campo de futebol e a Praça da Chegada, onde todo mundo nasce.
+- Jardim das Acácias, o bairro nobre: 8 mansões com piscina e jardim (casas 17 a 24, CTOs E e F). Moradores chiques (terno, vestido, pérolas), exigentes, que aceitam pagar R$ 70 a R$ 120 por dia.
+- Lotes de provedor: a cidade começa sem prédios de provedor. São 5 lotes; quem abre um provedor escolhe o lote e o prédio é construído na hora (obra de R$ 2.500). Cada jogador só pode ser dono de 1. Os outros entram como sócios.
+- Centro Cívico: Prefeitura, Escola Municipal, Delegacia de Polícia e Hospital Municipal (casas 25 a 28, CTO G).
+- Licitações (tecla L, botão Licitações ou mural da Prefeitura): os donos de provedor disputam os prédios públicos com proposta de preço. Menor preço vence; atestado de 3 clientes online, contrato de 5 dias, 1 dia para instalar, SLA por órgão e multa de R$ 1.500.
+- Montanhas, morros e mata de pinheiros em volta da cidade.
+- Rede: 4 splitters na rua (Principal, Palmeiras, Acácias e Centro Cívico) e 7 CTOs. Cada prédio novo puxa um tronco até cada splitter pela linha de postes.
+
 ## 10/11/2026
 
 - OLT: consultas (display ont autofind, display ont info 0 1 <porta> all, display service-port...) funcionam em qualquer modo. Comando digitado no modo errado agora explica em que modo ele roda e o caminho até lá. Wiki com o prompt real (MA5800-X7).

@@ -1,4 +1,4 @@
--- Quiosque da wiki na recepção do provedor. Ao apertar E, abre a wiki na tela do jogador.
+-- Quiosque da wiki na Praça da Chegada. Ao apertar E, abre a wiki na tela do jogador.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -13,21 +13,22 @@ wikiOpen.Name = "WikiOpen"
 wikiOpen.Parent = remotes
 
 -- espera o mapa ser montado pelo WorldBuilder
+-- o quiosque fica na Praça da Chegada, onde todo mundo nasce (base criada pelo WorldBuilder)
 local counter: BasePart? = nil
 for _ = 1, 60 do
-	counter = workspace:FindFirstChild("ReceptionCounter", true) :: BasePart?
+	counter = workspace:FindFirstChild("QuiosqueBase", true) :: BasePart?
 	if counter then
 		break
 	end
 	task.wait(1)
 end
 if not counter then
-	warn("[Wiki] balcão da recepção não encontrado; quiosque não criado")
+	warn("[Wiki] base do quiosque não encontrada; quiosque não criado")
 	return
 end
 
 local floorY = counter.Position.Y - counter.Size.Y / 2
-local base = Vector3.new(counter.Position.X + 10, floorY, counter.Position.Z + 2)
+local base = Vector3.new(counter.Position.X, floorY, counter.Position.Z)
 
 local model = Instance.new("Model")
 model.Name = "QuiosqueWiki"

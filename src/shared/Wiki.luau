@@ -40,13 +40,16 @@ local TK = Config.Tech
 local CAR = Config.Car
 local OP = Config.Opening
 local ROUTER_PRICE, OLT_PRICE = 900, 1800 -- iguais ao catálogo do RackService
--- tudo para levar internet às 16 casas: rack, link, ferramentas e insumos
+-- rack, link, ferramentas e insumos para as 16 casas da Rua Principal e das Palmeiras
 local fullSetup = ROUTER_PRICE + OLT_PRICE + Config.Link.InstallFee + kitTools
 	+ 4 * S.onu.price + 4 * S.drop.price + S.emenda.price + S.conector.price
 local linkDaily = Config.StartUpstreamMbps * Config.UpstreamCostPerMbpsDay
 local PRICE = Config.Price
 local AT = Config.Attendant
 local ONU_DAYS = Config.Onu.MinAgeDays
+local BUILD = Config.Lots.BuildCost
+local BIDS = Config.Bids
+local NOBRE = Config.Nobre
 
 Wiki.Pages = {
 	-- -----------------------------------------------------------------------
@@ -58,8 +61,8 @@ Wiki.Pages = {
 			f("Você é técnico e dono de um pequeno provedor de fibra óptica na %s. Cada casa da rua recebe internet por um cabo que sai do seu prédio.", Config.CityName),
 			"",
 			"# Mundo aberto",
-			f("- Você chega com <b>R$ %d</b> próprios. Aperte <b>P</b> para abrir o seu provedor num prédio livre ou entrar como sócio de um provedor que já existe.", Config.StartMoney),
-			"- A cidade tem dois prédios. Com dois provedores abertos, eles disputam os moradores pelo preço. Veja <b>Provedores, sócios e concorrência</b>.",
+			f("- Você chega com <b>R$ %d</b> próprios e nasce na <b>Praça da Chegada</b>. Aperte <b>P</b> para construir o seu provedor num lote livre (obra de R$ %d) ou trabalhar como sócio de um dono.", Config.StartMoney, BUILD),
+			"- A cidade tem <b>5 lotes</b> de provedor. Cada jogador só pode ser dono de 1. Os provedores disputam os moradores pelo preço e os prédios públicos nas <b>licitações</b>. Veja <b>Provedores, sócios e concorrência</b> e <b>Licitações</b>.",
 			"",
 			"# Seu objetivo",
 			f("- A vila começa <b>sem internet</b>. Você tem até o fim do dia %d para contratar o link, comprar e configurar os equipamentos e ligar as casas.", OP.GraceDays),
@@ -82,8 +85,10 @@ Wiki.Pages = {
 			f("A %s ainda não tem internet. O rack está vazio, o link da operadora não foi contratado e nenhuma casa é cliente.", Config.CityName),
 			f("!Prazo de implantação: %d dias contando o dia em que o provedor abriu (cerca de %d minutos de jogo). Depois disso, quem escolheu o seu provedor e continua sem internet perde a paciência.", OP.GraceDays, OP.GraceDays * (Config.DayEndHour - Config.DayStartHour) * Config.HourSeconds // 60),
 			"",
-			"# 0. Abra o seu provedor (tecla P)",
-			"- No menu <b>Provedor</b>, escolha um prédio disponível, dê um nome e aperte <b>Abrir provedor</b>. O seu dinheiro vira o caixa do provedor.",
+			"# 0. Construa o seu provedor (tecla P)",
+			"- No menu <b>Provedor</b>, escolha um lote livre, dê um nome e aperte <b>Construir prédio</b>. Também dá para apertar E na placa de um lote vazio.",
+			f("- A obra custa <b>R$ %d</b> e sai do seu dinheiro. O resto (R$ %d) vira o caixa do provedor.", BUILD, Config.StartMoney - BUILD),
+			"- O prédio aparece na hora no lote, com recepção, NOC, datacenter e garagem. Você é levado para lá.",
 			"- O prazo de implantação começa a contar no dia em que o provedor abre.",
 			"",
 			"# 1. Conheça o prédio",
@@ -92,7 +97,7 @@ Wiki.Pages = {
 			"- 2º andar: o <b>datacenter</b>, com o rack 02 vazio esperando os equipamentos.",
 			"",
 			"# 2. Faça as compras (terminal de compras, térreo, E)",
-			f("- O provedor começa com R$ %d. Montar tudo para as 16 casas custa uns R$ %d.", Config.StartMoney, fullSetup),
+			f("- O provedor começa com R$ %d. Montar tudo para as 16 casas da Rua Principal e das Palmeiras custa uns R$ %d: comece pelas casas mais perto e use o crédito do governo para crescer.", Config.StartMoney - BUILD, fullSetup),
 			f("- Aba <b>Equipamentos</b>: <b>Contratar link da operadora</b> (R$ %d de ativação + R$ %d por dia), roteador MikroTik (R$ %d) e OLT Huawei (R$ %d).", Config.Link.InstallFee, linkDaily, ROUTER_PRICE, OLT_PRICE),
 			"- Aba <b>Ferramentas</b>: Power Meter, Máquina de Fusão e Notebook TI.",
 			"- Aba <b>Insumos</b>: ONU e fibra drop (1 de cada por casa), tubetes de emenda e conectores.",
@@ -134,6 +139,8 @@ Wiki.Pages = {
 			"- <b>J</b>: abre e fecha esta wiki.",
 			"- <b>M</b>: tablet do técnico, com a rede ao vivo e os últimos alarmes.",
 			"- <b>O</b>: ERP do provedor (ordens de serviço, equipe, receitas e despesas, estoque). Também abre no computador do balcão da recepção.",
+			"- <b>L</b>: licitações dos prédios públicos (Prefeitura, Escola, Delegacia e Hospital). Também abre no mural da Prefeitura.",
+			"- <b>P</b>: menu Provedor (construir num lote, entrar como sócio, nome, preço e aporte).",
 			"- <b>1, 2, 3</b>: equipa as ferramentas que o provedor já comprou (Power Meter, Máquina de Fusão, Notebook TI).",
 			"- <b>Clique</b> com o Notebook TI na mão: abre o terminal do notebook.",
 			"- <b>T</b>: conversar com um morador.",
@@ -165,7 +172,7 @@ Wiki.Pages = {
 			"",
 			"# No celular",
 			"- As janelas encolhem para caber na tela. Todas têm um <b>X</b> vermelho no canto de cima para fechar.",
-			"- Os botões <b>Wiki</b>, <b>Tablet</b>, <b>Provedor</b> e <b>ERP</b> ficam no alto, à esquerda, no lugar das teclas J, M, P e O.",
+			"- Os botões <b>Wiki</b>, <b>Tablet</b>, <b>Provedor</b>, <b>ERP</b> e <b>Licitações</b> ficam no alto, à esquerda, no lugar das teclas J, M, P, O e L.",
 			"- No menu do rack, toque nos botões das ações. Toque no <b>X</b> ou se afaste para fechar.",
 			"- Para falar com morador, abrir caixas e entrar no carro, toque no aviso que aparece sobre o objeto.",
 			"- No carro, o controle de andar acelera, freia e vira. O botão de pular sai do carro.",
@@ -177,18 +184,33 @@ Wiki.Pages = {
 		category = "Começando",
 		title = "Mapa da Vila Aurora",
 		body = {
-			f("A %s tem duas ruas com 16 casas.", Config.CityName),
+			f("A %s ocupa um quadrado cercado de montanhas e mata. São 4 avenidas de leste a oeste ligadas por 3 ruas de norte a sul, com 16 casas, 8 mansões e 4 prédios públicos.", Config.CityName),
 			"",
-			"# Rua Principal",
-			"- Onde fica o prédio do provedor, a garagem da equipe e a praça.",
-			"- Casas <b>1 a 4</b> do lado norte (CTO A) e <b>5 a 8</b> do lado sul (CTO B).",
+			"# Praça da Chegada",
+			"- Na ponta oeste da Rua Principal. Quem entra no jogo nasce aqui, com o quiosque da wiki e o mapa da cidade.",
+			"",
+			"# Rua Principal (centro)",
+			"- Casas <b>1 a 4</b> do lado norte (CTO A) e <b>5 a 8</b> do lado sul (CTO B). Tem a praça do chafariz e o campo de futebol logo ao sul.",
+			"- <b>Lotes 1 e 2</b> de provedor.",
 			"",
 			"# Rua das Palmeiras",
-			"- Sai do fim da Rua Principal e sobe para o norte. É longe do provedor: a pé leva quase um minuto.",
-			"- Casas <b>9 a 12</b> do lado oeste (CTO C) e <b>13 a 16</b> do lado leste (CTO D).",
-			"- Tem um tronco de fibra só dela e um splitter na esquina. No começo nenhuma casa tem internet: todas esperam instalação.",
+			"- Liga a Rua Principal à Avenida Central. Casas <b>9 a 12</b> do lado oeste (CTO C) e <b>13 a 16</b> do lado leste (CTO D).",
 			"",
-			"> Com a rua nova fica difícil cuidar de tudo sozinho. Uma equipe de técnicos e o carro ajudam a chegar a tempo.",
+			"# Avenida Central (norte)",
+			"- <b>Lotes 3 e 4</b> de provedor, do lado norte.",
+			"- Do lado sul, o <b>Centro Cívico</b>: Prefeitura (casa 25), Escola Municipal (26), Delegacia de Polícia (27) e Hospital Municipal (28), todos na CTO G. Eles contratam internet por licitação.",
+			"- Atrás deles fica o <b>Parque da Vila</b>, com lago e trilhas.",
+			"",
+			"# Avenida Sul e Jardim das Acácias (bairro nobre)",
+			"- <b>Lote 5</b> de provedor, na Avenida Sul.",
+			"- Pela Rua da Serra (oeste) se chega ao portal do <b>Jardim das Acácias</b>: mansões <b>17 a 20</b> do lado norte da Alameda (CTO E) e <b>21 a 24</b> do lado sul (CTO F), com uma praça de chafariz no fim.",
+			f("- Os moradores de lá são exigentes e aceitam pagar mais: até R$ %d a R$ %d por dia (os outros, até R$ %d a R$ %d).", NOBRE.WillingMin, NOBRE.WillingMax, PRICE.WillingMin, PRICE.WillingMax),
+			"",
+			"# A rede da rua",
+			"- Cada região tem um splitter primário: Principal, Palmeiras, Acácias e Centro Cívico. A rua é de todos (rede neutra).",
+			"- Quando um provedor constrói o prédio, sai dele um <b>tronco de fibra até cada splitter</b>, pela linha de postes do lado norte (ou oeste) das ruas.",
+			"",
+			"> A cidade é grande: a pé leva minutos de um lado ao outro. Técnicos e o carro da equipe fazem diferença.",
 		},
 	},
 
@@ -719,12 +741,13 @@ Wiki.Pages = {
 		category = "Gestão",
 		title = "Provedores, sócios e concorrência",
 		body = {
-			"A cidade tem <b>dois prédios</b> iguais. Cada um pode ter um provedor aberto, com dono, sócios, caixa, rack, equipe e carro próprios.",
+			"A cidade começa <b>sem prédios de provedor</b>. Tem <b>5 lotes</b> marcados no mapa (placa azul de LOTE). Cada lote pode ter um provedor, com dono, sócios, caixa, rack, equipe e carro próprios.",
 			"",
-			"# Abrir ou entrar (tecla P)",
+			"# Construir ou entrar (tecla P)",
 			f("- Todo jogador chega com <b>R$ %d</b> próprios.", Config.StartMoney),
-			"- <b>Abrir provedor</b>: escolha um prédio disponível e dê um nome. Você vira o dono e o seu dinheiro vira o caixa.",
-			"- <b>Entrar como sócio</b>: você passa a trabalhar no provedor de outro jogador. No menu, <b>Aportar no caixa</b> coloca o seu dinheiro no provedor.",
+			f("- <b>Construir prédio</b>: escolha um lote livre e dê um nome. A obra custa R$ %d, o prédio aparece na hora e você vira o dono. O resto do seu dinheiro vira o caixa.", BUILD),
+			"- <b>No máximo 5 provedores</b> por servidor e <b>cada jogador só pode ser dono de 1</b>.",
+			"- O servidor pode ter mais jogadores do que lotes. Quem não tem provedor <b>entra como sócio</b> (colaborador) de um dono e trabalha no provedor dele. No menu, <b>Aportar no caixa</b> coloca o seu dinheiro no provedor.",
 			"- Só a equipe do provedor usa o terminal de compras, o rack, os PCs do NOC e o carro do prédio dele.",
 			"",
 			"# Nome e preço",
@@ -737,17 +760,55 @@ Wiki.Pages = {
 			"- Cada morador escolhe o provedor <b>mais barato</b>. Se o preço for igual, ganha quem tem mais estrelas de reputação.",
 			f("- Cada morador tem um preço máximo que aceita pagar (entre R$ %d e R$ %d). Acima disso, ele não contrata ninguém.", PRICE.WillingMin, PRICE.WillingMax),
 			"- Só dá para instalar internet na casa que escolheu o seu provedor. A placa na casa mostra o nome do escolhido.",
-			"- No mapa do NOC, as casas roxas são clientes do outro provedor.",
+			"- No mapa do NOC, as casas roxas são clientes de outro provedor.",
 			"",
 			"# A rua é de todos",
 			"- Postes, caixas (CTO), splitters e drops são compartilhados: rede neutra. Cada provedor liga a sua OLT na mesma rua.",
-			"- Um rompimento no cabo da rua derruba os clientes dos dois provedores. Qualquer equipe pode consertar.",
+			"- Um rompimento no cabo da rua derruba os clientes de todos os provedores daquela CTO. Qualquer equipe pode consertar.",
+			"- O tronco que sai do seu prédio até cada splitter é só seu: se ele romper, só os seus clientes daquela região caem.",
 			"",
 			"# Quando alguém sai do jogo",
 			"- Se o dono sair, o sócio que entrou por último vira o dono e fica com o caixa.",
-			"- Se não sobrar ninguém, o provedor fecha, as casas dele ficam livres e o prédio volta a ficar disponível.",
+			"- Se não sobrar ninguém, o provedor fecha, as casas dele ficam livres e o prédio é desmontado: o lote volta a ficar livre.",
+			"- Na falência acontece o mesmo: o lote fica livre para outro provedor.",
 			"",
 			"> Preço baixo atrai os moradores, mas cada cliente rende menos. Prazo, manifestação e falência são de cada provedor.",
+		},
+	},
+	{
+		id = "licitacoes",
+		category = "Gestão",
+		title = "Licitações: Prefeitura, Escola, Delegacia e Hospital",
+		body = {
+			"Os 4 prédios públicos do Centro Cívico (Avenida Central) contratam internet por <b>licitação</b>. É o maior contrato da cidade: cada um paga por dia o que vale várias casas.",
+			"",
+			"# Onde ver",
+			"- Tecla <b>L</b>, botão <b>Licitações</b> ou o <b>mural de licitações</b> na frente da Prefeitura (E).",
+			"",
+			"# Quanto vale cada um",
+			(function()
+				local parts = {}
+				for _, o in BIDS.Orgs do
+					table.insert(parts, f("%s: até R$ %d por dia, SLA de %dh", o.name, o.ref, o.slaHours))
+				end
+				return "- " .. table.concat(parts, " · ") .. "."
+			end)(),
+			f("- A proposta mínima é %d%% do valor de referência.", math.floor(BIDS.FloorFraction * 100)),
+			"",
+			"# Como funciona",
+			f("- 1. O edital abre (o primeiro a partir do dia %d) e fica aberto por <b>%d horas</b> de jogo. Todo mundo recebe o aviso.", BIDS.FirstDay, BIDS.OpenHours),
+			"- 2. <b>Só o dono</b> do provedor manda a proposta: o preço por dia. Os outros não veem o seu valor. Dá para trocar ou retirar até o edital fechar.",
+			f("- 3. Atestado de capacidade técnica: na hora do resultado, o provedor precisa ter pelo menos <b>%d clientes online</b>. Sem isso, a proposta é desclassificada.", BIDS.MinClients),
+			"- 4. Ganha o <b>menor preço</b>. Empate: mais estrelas de reputação; depois, quem mandou antes.",
+			f("- 5. O vencedor recebe a <b>OS de instalação</b> no ERP e tem <b>%d dia</b> para instalar e ativar o prédio na OLT (a ONU fica na fachada, CTO G).", BIDS.InstallDays),
+			f("- 6. O contrato dura <b>%d dias</b>. No fim, abre outra licitação. Se outro provedor ganhar, a internet do antigo é desligada.", BIDS.ContractDays),
+			"",
+			"# Multas e rescisão",
+			f("!Não instalou no prazo ou o prédio passou do SLA (horas seguidas sem internet): multa de R$ %d, contrato rescindido e licitação nova.", BIDS.Fine),
+			f("- Cada hora sem internet num prédio público custa R$ %d de multa de SLA (5 vezes a de uma casa).", Config.SlaPenaltyPerHour * BIDS.SlaMult),
+			"- Prédio público usa mais banda: confira o link antes de ganhar todos.",
+			"",
+			"> Sócios não mandam proposta, mas ajudam: mantenha clientes online para o atestado e deixe técnico e estoque prontos para instalar no prazo.",
 		},
 	},
 	{
@@ -755,11 +816,12 @@ Wiki.Pages = {
 		category = "Gestão",
 		title = "Dinheiro, SLA e reputação",
 		body = {
-			f("Cada jogador chega com R$ %d. Quem abre o provedor coloca esse dinheiro no caixa, o suficiente para montar a rede da vila inteira (uns R$ %d) e ainda sobra. Sócios podem aportar o dinheiro deles também.", Config.StartMoney, fullSetup),
+			f("Cada jogador chega com R$ %d. Quem abre o provedor paga R$ %d da obra do prédio e o resto vai para o caixa. Sócios podem aportar o dinheiro deles também.", Config.StartMoney, BUILD),
 			"",
 			"# Entradas",
 			f("- Mensalidade: cada cliente paga, por dia, o preço do contrato dele (começa em R$ %d; você muda no menu Provedor).", Config.DailyFeePerCustomer),
 			f("- Instalação de cliente novo: R$ %d.", Config.InstallFee),
+			"- Contratos de licitação: Prefeitura, Escola, Delegacia e Hospital pagam por dia o valor da proposta vencedora.",
 			"- Crédito do governo, quando precisar (é dívida, tem que devolver).",
 			"",
 			"# Saídas",
@@ -768,7 +830,7 @@ Wiki.Pages = {
 			"- Parcela do crédito do governo, no fechamento do dia.",
 			f("- Salário de cada técnico de rua contratado (R$ %d por dia, cada um).", TK.DailySalary),
 			f("- Combustível e seguro do carro da equipe, se tiver (R$ %d por dia).", CAR.DailyCost),
-			f("- Multa de SLA: R$ %d por cliente, por hora de jogo sem internet.", Config.SlaPenaltyPerHour),
+			f("- Multa de SLA: R$ %d por cliente, por hora de jogo sem internet (prédio público: R$ %d).", Config.SlaPenaltyPerHour, Config.SlaPenaltyPerHour * BIDS.SlaMult),
 			"",
 			"# SLA",
 			"- É a porcentagem do tempo em que os clientes tiveram internet. Instável conta pela metade.",
@@ -945,6 +1007,18 @@ Wiki.Pages = {
 
 -- Registro de mudanças, mais novo primeiro. Toda funcionalidade nova entra aqui.
 Wiki.Changelog = {
+	{
+		date = "10/11/2026 · cidade ampliada",
+		items = {
+			"Cidade muito maior, ocupando todo o terreno: Avenida Central, Avenida Sul, Rua da Serra e Rua do Rio, parque com lago, campo de futebol e a Praça da Chegada, onde todo mundo nasce.",
+			"Jardim das Acácias, o bairro nobre: 8 mansões com piscina e jardim (casas 17 a 24, CTOs E e F). Moradores chiques (terno, vestido, pérolas), exigentes, que aceitam pagar mais caro.",
+			f("Lotes de provedor: a cidade começa sem prédios de provedor. São 5 lotes; quem abre um provedor escolhe o lote e o prédio é construído na hora (obra de R$ %d). Cada jogador só pode ser dono de 1. Os outros entram como sócios.", BUILD),
+			"Centro Cívico: Prefeitura, Escola Municipal, Delegacia de Polícia e Hospital Municipal (casas 25 a 28, CTO G).",
+			"Licitações (tecla L): os donos de provedor disputam os prédios públicos com proposta de preço. Menor preço vence; atestado de clientes online, prazo de instalação, SLA e multa.",
+			"Montanhas, morros e mata de pinheiros em volta da cidade.",
+			"Rede: 4 splitters na rua (Principal, Palmeiras, Acácias e Centro Cívico) e 7 CTOs. Cada prédio novo puxa um tronco até cada splitter pela linha de postes.",
+		},
+	},
 	{
 		date = "10/11/2026",
 		items = {

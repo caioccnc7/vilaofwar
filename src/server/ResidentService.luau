@@ -46,7 +46,12 @@ local function isProtesting(r: any): boolean
 	return slot ~= nil and protesting[slot] == true
 end
 
-local Names = { "Dona Cida", "Seu Jorge", "Marina", "Tiago", "Lúcia", "Rafael", "Bia", "Seu Antônio", "Dona Rosa", "Pedro", "Camila", "Seu Valdir", "Helena", "Júlio", "Dona Zezé", "Igor" }
+local Names = {
+	"Dona Cida", "Seu Jorge", "Marina", "Tiago", "Lúcia", "Rafael", "Bia", "Seu Antônio",
+	"Dona Rosa", "Pedro", "Camila", "Seu Valdir", "Helena", "Júlio", "Dona Zezé", "Igor",
+	-- Jardim das Acácias (bairro nobre)
+	"Dr. Henrique", "Dona Beatriz", "Sr. Augusto", "Madame Celina", "Sr. Otávio", "Dona Isadora", "Dr. Fernando", "Dra. Valéria",
+}
 local Skin = {
 	Color3.fromRGB(255, 213, 170),
 	Color3.fromRGB(198, 134, 66),
@@ -278,6 +283,11 @@ end
 local function bubbleLine(r: any): string
 	local key = situation(r)
 	local list = Dialogs.Bubble[key] or Dialogs.Bubble.online_neutral
+	-- moradores do Jardim das Acácias têm falas próprias
+	local nobre = r.house.zone == "jardim" and Dialogs.Nobre and Dialogs.Nobre[key]
+	if nobre and math.random() < 0.7 then
+		list = nobre
+	end
 	return Dialogs.pick(list)
 end
 
@@ -435,9 +445,12 @@ local function brain(r: any)
 			local roll = math.random()
 			if roll < 0.35 then
 				route(r, r.house.yardPoint)
-			elseif r.house.side >= 2 then
-				-- quem mora na Rua das Palmeiras passeia pela própria rua (a praça fica longe)
-				local p = world.palmPoints[math.random(1, #world.palmPoints)]
+			elseif r.house.walkPoints and #r.house.walkPoints > 0 and r.house.zone ~= "centro" then
+				-- cada bairro passeia perto de casa (Palmeiras na rua dela, Acácias na Alameda e na praça do chafariz)
+				local p = r.house.walkPoints[math.random(1, #r.house.walkPoints)]
+				route(r, p)
+			elseif roll < 0.5 and world.parkPoints and #world.parkPoints > 0 then
+				local p = world.parkPoints[math.random(1, #world.parkPoints)]
 				route(r, p)
 			elseif roll < 0.7 then
 				local p = world.plazaPoints[math.random(1, #world.plazaPoints)]
@@ -542,6 +555,9 @@ function Residents.init(worldData: any, netService: any, gameService: any)
 	net = netService
 	game_ = gameService
 	for i, house in world.houses do
+		if house.public then
+			continue -- prédio público não tem morador: quem decide é a licitação
+		end
 		local model = makeBody(i)
 		model.Name = Names[i]
 		model.Parent = world.npcFolder

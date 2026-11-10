@@ -46,6 +46,16 @@ local Profiles = {
 	{ skin = "fair", hair = "spiky", hairColor = "blond", hat = "cap", hatColor = Color3.fromRGB(40, 90, 200), shirt = Color3.fromRGB(60, 170, 90), pants = Color3.fromRGB(90, 110, 140), shoes = Color3.fromRGB(240, 240, 240), height = 1.03, sleeves = "short" },
 	{ skin = "deep", hair = "bun", hairColor = "white", shirt = Color3.fromRGB(240, 150, 60), pants = Color3.fromRGB(120, 70, 50), shoes = Color3.fromRGB(70, 50, 40), glasses = true, height = 0.9, sleeves = "short", collar = true },
 	{ skin = "tan", hair = "mohawk", hairColor = "black", headphones = true, shirt = Color3.fromRGB(35, 35, 40), pants = Color3.fromRGB(60, 60, 65), shoes = Color3.fromRGB(200, 40, 40), height = 1.04, sleeves = "short" },
+	-- 17 a 24: Jardim das Acácias (bairro nobre). Terno, gravata, vestido, colar de
+	-- pérolas, chapéu panamá, relógio dourado e óculos escuros.
+	{ skin = "fair", hair = "short", hairColor = "grey", blazer = true, tie = Color3.fromRGB(150, 30, 45), shirt = Color3.fromRGB(35, 40, 60), pants = Color3.fromRGB(35, 40, 60), shoes = Color3.fromRGB(25, 20, 18), glasses = true, watch = true, height = 1.02, sleeves = "long" },
+	{ skin = "tan", hair = "bun", hairColor = "black", dress = Color3.fromRGB(180, 30, 70), shirt = Color3.fromRGB(180, 30, 70), pants = Color3.fromRGB(240, 220, 200), shoes = Color3.fromRGB(200, 170, 90), pearls = true, sunglasses = true, height = 0.98, sleeves = "short" },
+	{ skin = "light", hair = "bald", hairColor = "white", hat = "panama", hatColor = Color3.fromRGB(245, 240, 225), blazer = true, tie = Color3.fromRGB(30, 60, 120), shirt = Color3.fromRGB(230, 225, 210), pants = Color3.fromRGB(230, 225, 210), shoes = Color3.fromRGB(120, 80, 50), mustache = true, beardColor = "white", watch = true, height = 0.96, sleeves = "long" },
+	{ skin = "dark", hair = "long", hairColor = "black", dress = Color3.fromRGB(20, 20, 26), shirt = Color3.fromRGB(20, 20, 26), pants = Color3.fromRGB(150, 110, 80), shoes = Color3.fromRGB(20, 20, 26), pearls = true, height = 1.0, sleeves = "short" },
+	{ skin = "medium", hair = "short", hairColor = "black", blazer = true, tie = Color3.fromRGB(200, 170, 60), shirt = Color3.fromRGB(70, 74, 82), pants = Color3.fromRGB(70, 74, 82), shoes = Color3.fromRGB(30, 25, 22), sunglasses = true, watch = true, beard = true, height = 1.04, sleeves = "long" },
+	{ skin = "fair", hair = "bob", hairColor = "blond", dress = Color3.fromRGB(240, 235, 225), shirt = Color3.fromRGB(240, 235, 225), pants = Color3.fromRGB(230, 200, 180), shoes = Color3.fromRGB(190, 60, 70), hat = "sunhat", hatColor = Color3.fromRGB(235, 220, 180), pearls = true, height = 0.97, sleeves = "short" },
+	{ skin = "brown", hair = "short", hairColor = "grey", blazer = true, tie = Color3.fromRGB(40, 110, 70), shirt = Color3.fromRGB(110, 70, 50), pants = Color3.fromRGB(60, 50, 45), shoes = Color3.fromRGB(70, 45, 30), glasses = true, watch = true, height = 1.0, sleeves = "long" },
+	{ skin = "light", hair = "ponytail", hairColor = "auburn", dress = Color3.fromRGB(40, 90, 150), shirt = Color3.fromRGB(40, 90, 150), pants = Color3.fromRGB(240, 220, 200), shoes = Color3.fromRGB(240, 240, 240), sunglasses = true, pearls = true, height = 1.0, sleeves = "short" },
 }
 
 -- ---------------------------------------------------------------------------
@@ -213,6 +223,11 @@ local function hat(m: Model, head: BasePart, kind: string, color: Color3)
 		deco(m, head, { Name = "AbaPalha", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.06, u * 2.0, u * 2.0), Color = straw, Material = Enum.Material.SmoothPlastic }, CFrame.new(0, u * 0.4, 0) * CFrame.Angles(0, 0, math.rad(90)))
 		deco(m, head, { Name = "CopaPalha", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.45, u * 1.05, u * 1.05), Color = straw, Material = Enum.Material.SmoothPlastic }, CFrame.new(0, u * 0.62, 0) * CFrame.Angles(0, 0, math.rad(90)))
 		deco(m, head, { Name = "Fita", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.1, u * 1.07, u * 1.07), Color = Color3.fromRGB(120, 40, 30) }, CFrame.new(0, u * 0.48, 0) * CFrame.Angles(0, 0, math.rad(90)))
+	elseif kind == "panama" or kind == "sunhat" then
+		local brim = if kind == "sunhat" then 2.3 else 1.6
+		deco(m, head, { Name = "AbaChapeu", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.05, u * brim, u * brim), Color = color }, CFrame.new(0, u * 0.42, 0) * CFrame.Angles(0, 0, math.rad(90)))
+		deco(m, head, { Name = "CopaChapeu", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.45, u * 1.02, u * 1.02), Color = color }, CFrame.new(0, u * 0.64, 0) * CFrame.Angles(0, 0, math.rad(90)))
+		deco(m, head, { Name = "Fita", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.1, u * 1.04, u * 1.04), Color = Color3.fromRGB(30, 30, 35) }, CFrame.new(0, u * 0.5, 0) * CFrame.Angles(0, 0, math.rad(90)))
 	elseif kind == "fedora" then
 		deco(m, head, { Name = "AbaChapeu", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.05, u * 1.55, u * 1.55), Color = color }, CFrame.new(0, u * 0.42, 0) * CFrame.Angles(0, 0, math.rad(90)))
 		deco(m, head, { Name = "CopaChapeu", Shape = Enum.PartType.Cylinder, Size = Vector3.new(u * 0.5, u * 1.0, u * 1.0), Color = color }, CFrame.new(0, u * 0.66, 0) * CFrame.Angles(0, 0, math.rad(90)))
@@ -263,7 +278,41 @@ local function torsoExtras(m: Model, prof: any)
 			deco(m, torso, { Name = "Botao", Shape = Enum.PartType.Ball, Size = Vector3.new(s.Y * 0.06, s.Y * 0.06, s.Y * 0.06), Color = Color3.fromRGB(240, 240, 235) }, CFrame.new(0, s.Y * (0.22 - i * 0.22), -s.Z * 0.52))
 		end
 	end
-	if lower then
+	if torso and (prof.blazer or prof.tie) then
+		local s = torso.Size
+		-- camisa branca em V, lapelas do paletó e gravata
+		deco(m, torso, { Name = "CamisaV", Class = "WedgePart", Size = Vector3.new(s.X * 0.34, s.Y * 0.5, s.Z * 0.04), Color = Color3.fromRGB(245, 245, 242) }, CFrame.new(0, s.Y * 0.25, -s.Z * 0.51) * CFrame.Angles(math.rad(180), 0, 0))
+		for _, sx in { -1, 1 } do
+			deco(m, torso, { Name = "Lapela", Size = Vector3.new(s.X * 0.1, s.Y * 0.55, s.Z * 0.05), Color = prof.shirt:Lerp(Color3.new(0, 0, 0), 0.3) }, CFrame.new(sx * s.X * 0.2, s.Y * 0.18, -s.Z * 0.52) * CFrame.Angles(0, 0, math.rad(sx * 14)))
+		end
+		if prof.tie then
+			deco(m, torso, { Name = "Gravata", Size = Vector3.new(s.X * 0.09, s.Y * 0.5, s.Z * 0.05), Color = prof.tie }, CFrame.new(0, s.Y * 0.12, -s.Z * 0.535))
+			deco(m, torso, { Name = "NoGravata", Size = Vector3.new(s.X * 0.12, s.Y * 0.08, s.Z * 0.06), Color = prof.tie }, CFrame.new(0, s.Y * 0.4, -s.Z * 0.54))
+		end
+		for i = 0, 1 do
+			deco(m, torso, { Name = "BotaoPaleto", Shape = Enum.PartType.Ball, Size = Vector3.new(s.Y * 0.05, s.Y * 0.05, s.Y * 0.05), Color = Color3.fromRGB(30, 30, 30) }, CFrame.new(s.X * 0.08, -s.Y * (0.12 + i * 0.16), -s.Z * 0.52))
+		end
+	end
+	if torso and prof.pearls then
+		local s = torso.Size
+		for i = -3, 3 do
+			local a = i / 3
+			deco(m, torso, { Name = "Perola", Shape = Enum.PartType.Ball, Size = Vector3.new(s.Y * 0.06, s.Y * 0.06, s.Y * 0.06), Color = Color3.fromRGB(250, 248, 240), Material = Enum.Material.SmoothPlastic, Reflectance = 0.2 }, CFrame.new(a * s.X * 0.22, s.Y * (0.42 - 0.12 * (1 - a * a)), -s.Z * 0.52))
+		end
+	end
+	if lower and prof.dress then
+		local s = lower.Size
+		-- saia do vestido, larga embaixo
+		deco(m, lower, { Name = "Saia", Size = Vector3.new(s.X * 1.25, s.Y * 2.6, s.Z * 1.35), Color = prof.dress }, CFrame.new(0, -s.Y * 0.95, 0))
+	end
+	if prof.watch then
+		local hand = m:FindFirstChild("LeftLowerArm") :: BasePart?
+		if hand then
+			local s = hand.Size
+			deco(m, hand, { Name = "Relogio", Size = Vector3.new(s.X * 1.1, s.Y * 0.14, s.Z * 1.1), Color = Color3.fromRGB(215, 180, 80), Material = Enum.Material.Metal }, CFrame.new(0, -s.Y * 0.35, 0))
+		end
+	end
+	if lower and not prof.dress then
 		local s = lower.Size
 		deco(m, lower, { Name = "Cinto", Size = Vector3.new(s.X * 1.04, s.Y * 0.22, s.Z * 1.08), Color = Color3.fromRGB(50, 35, 25), Material = Enum.Material.Leather }, CFrame.new(0, s.Y * 0.32, 0))
 		deco(m, lower, { Name = "Fivela", Size = Vector3.new(s.X * 0.16, s.Y * 0.18, s.Z * 0.06), Color = Color3.fromRGB(200, 180, 110), Material = Enum.Material.Metal }, CFrame.new(0, s.Y * 0.32, -s.Z * 0.56))

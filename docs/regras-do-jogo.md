@@ -9,16 +9,18 @@ Estas regras foram combinadas com o Caio (dono do projeto). Os números ficam em
 
 ## Mundo aberto e provedores
 
-- A cidade tem **dois prédios** iguais. Cada um pode ter **um provedor** aberto. O servidor aceita no máximo dois provedores.
+- A cidade começa **sem prédios de provedor**. Há **5 lotes** fixos no mapa (`Shared/CityMap`), cada um com uma placa "Construir".
+- Cada jogador pode ser dono de **um** provedor. O servidor aceita mais de 5 jogadores: quem fica sem lote entra como **sócio**.
+- Construir custa **R$ 2.500** (`Config.Lots.BuildCost`), pagos da carteira do dono. O resto da carteira vira o caixa do provedor.
 - Cada jogador chega com **R$ 12.000 próprios**, guardados no atributo `Wallet`.
 - Pelo menu **Provedor** (tecla P), o jogador pode:
-  - **Abrir provedor:** escolhe um prédio livre e um nome. Vira o dono, e o dinheiro dele vira o caixa do provedor.
+  - **Construir o prédio:** escolhe um lote livre e um nome. Vira o dono, e o dinheiro dele vira o caixa do provedor.
   - **Entrar como sócio:** passa a trabalhar num provedor que já existe e pode **aportar** o próprio dinheiro no caixa.
   - **Renomear** o provedor. O nome aparece na fachada.
   - **Mudar o preço** da mensalidade, de R$ 10 a R$ 120 por dia.
 - Só a equipe do provedor usa o terminal de compras, o rack, os PCs do NOC e o carro do prédio dele.
 - **Dono sai do jogo:** o sócio que entrou por último vira dono e fica com o caixa.
-- **Ninguém sobra:** o provedor fecha, as casas dele ficam livres e o prédio volta a ficar disponível.
+- **Ninguém sobra:** o provedor fecha, as casas dele ficam livres, o prédio é desmontado e o lote volta a ficar livre.
 
 ## Rede neutra
 
@@ -80,3 +82,26 @@ Estas regras foram combinadas com o Caio (dono do projeto). Os números ficam em
 
 - O programa Conecta Vila libera R$ 2.000 por pedido, uma vez por dia, com 10% de juros.
 - A parcela é de R$ 300 por dia, e a dívida máxima é de R$ 6.600.
+
+## Bairro nobre
+
+- Jardim das Acácias: mansões 17 a 24 (CTOs E e F, splitter das Acácias). Os moradores aceitam pagar de R$ 70 a R$ 120 por dia (`Config.Nobre`).
+
+## Licitações dos prédios públicos
+
+Prefeitura (casa 25), Escola (26), Delegacia (27) e Hospital (28), na CTO G. Valores em `Config.Bids`; código em `server/LicitacaoService.luau`; tela em `client/Licitacoes.client.luau` (tecla L).
+
+- O primeiro edital abre no **dia 2**. Fica aberto **3 horas** de jogo.
+- Só o **dono** do provedor manda proposta (preço por dia), entre o piso (50% da referência) e a referência.
+- **Menor preço vence.** Empate: maior reputação, depois quem mandou primeiro.
+- **Atestado:** o provedor precisa ter **3 clientes online** quando o edital fecha, senão a proposta é desclassificada.
+- Contrato de **5 dias**. O vencedor tem **1 dia** para instalar e ativar (OS aberta no ERP).
+- SLA (horas seguidas sem internet): Prefeitura 4h, Escola 6h, Delegacia 3h, Hospital 2h. Estourou: multa de **R$ 1.500** e rescisão. Não instalou no prazo: mesma multa.
+- Edital sem vencedor reabre em 2 horas. No fim do contrato abre um edital novo (renovação).
+
+| Órgão | Referência (R$/dia) | SLA |
+|---|---|---|
+| Prefeitura | 300 | 4h |
+| Escola | 200 | 6h |
+| Delegacia | 250 | 3h |
+| Hospital | 400 | 2h |

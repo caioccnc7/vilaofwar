@@ -1,4 +1,5 @@
--- Provedores da cidade (mundo aberto). Cada prédio pode ter um provedor aberto.
+-- Provedores da cidade (mundo aberto). A cidade tem lotes fixos (Shared/CityMap):
+-- quem abre um provedor escolhe um lote livre e o prédio é construído na hora.
 --
 -- Um provedor (P) tem dono, sócios, nome, preço e os seus serviços próprios:
 -- caixa e estoque (GameService), rack/NOC/loja (RackService), equipe e carro
@@ -10,17 +11,25 @@
 --   - quem vira sócio pode aportar o próprio dinheiro no caixa;
 --   - se o dono sai do jogo, o sócio que entrou por último vira dono e fica com o caixa;
 --   - sem ninguém, o provedor fecha e as casas dele ficam livres.
+-- Regras do Caio (10/11/2026, cidade ampliada):
+--   - no máximo 5 provedores (5 lotes) e cada jogador só pode ser dono de 1;
+--   - o servidor pode ter mais jogadores: quem não tem provedor entra como sócio
+--     (colaborador) de um dono;
+--   - a obra do prédio (Config.Lots.BuildCost) sai do dinheiro de quem abre.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local CityMap = require(ReplicatedStorage.Shared.CityMap)
 local Remotes = require(script.Parent.Remotes)
+local World = require(script.Parent.WorldBuilder)
 
 local Providers = {}
 
 Providers.slots = {} :: { [number]: any } -- [prédio] = provedor aberto
-Providers.SlotCount = 2
+Providers.SlotCount = #CityMap.Lots
 Providers.onOpen = nil :: ((any) -> ())? -- o Main cria os serviços do provedor
 Providers.onClose = nil :: ((any, string) -> ())? -- o Main desmonta os serviços
 local nextId = 0
@@ -119,14 +128,11 @@ local function publishTeam(P: any)
 end
 Providers.publishTeam = publishTeam
 
+-- O jogador renasce no prédio do provedor dele (Providers.start move o boneco);
+-- sem provedor, nasce na Praça da Chegada.
 local function setPlayerSlot(player: Player, slot: number?)
 	player:SetAttribute("Slot", slot)
-	local P = slot and Providers.slots[slot]
-	if P then
-		player.RespawnLocation = P.isp.spawn
-	else
-		player.RespawnLocation = nil
-	end
+	player.RespawnLocation = nil
 end
 
 function Providers.cleanName(name: any): string?
@@ -156,12 +162,20 @@ function Providers.open(player: Player, slot: number?, name: any): any
 			end
 		end
 	end
-	if not slot or Providers.slots[slot] then
-		Providers.notify(nil, player, "Não tem prédio livre na cidade. Entre como sócio de um provedor.", "error")
+	if not slot or slot < 1 or slot > Providers.SlotCount or Providers.slots[slot] then
+		Providers.notify(nil, player, string.format("Os %d lotes de provedor já estão ocupados. Entre como sócio de um provedor.", Providers.SlotCount), "error")
+		return nil
+	end
+	local cost = Config.Lots.BuildCost
+	local wallet = player:GetAttribute("Wallet") or 0
+	if wallet < cost then
+		Providers.notify(nil, player, string.format("A obra do prédio custa R$ %d e você tem R$ %d.", cost, wallet), "error")
 		return nil
 	end
 	nextId += 1
 	local clean = Providers.cleanName(name) or ("Provedor de " .. player.DisplayName)
+	-- obra: o prédio aparece no lote escolhido
+	local isp = World.buildIsp(slot)
 	local P = {
 		id = nextId,
 		slot = slot,
@@ -169,22 +183,24 @@ function Providers.open(player: Player, slot: number?, name: any): any
 		price = Config.DailyFeePerCustomer,
 		owner = player,
 		partners = {} :: { Player },
-		isp = Providers.world.isps[slot],
+		isp = isp,
 		folder = slotFolder(slot),
 		closed = false,
 	}
 	Providers.slots[slot] = P
-	local capital = player:GetAttribute("Wallet") or 0
+	local capital = wallet - cost
 	player:SetAttribute("Wallet", 0)
 	if Providers.onOpen then
 		Providers.onOpen(P)
 	end
 	P.game.money = capital
-	P.game.record("receita", "Capital", "Capital inicial de " .. player.DisplayName, capital)
+	P.game.record("receita", "Capital", "Capital inicial de " .. player.DisplayName, wallet)
+	P.game.record("despesa", "Obra", string.format("Construção do prédio no lote %d", slot), cost)
 	P.game.publish()
 	setPlayerSlot(player, slot)
 	publishTeam(P)
-	Providers.notify(nil, nil, string.format("%s abriu o provedor %s na cidade.", player.DisplayName, P.name), "info")
+	local lot = CityMap.Lots[slot]
+	Providers.notify(nil, nil, string.format("%s construiu o provedor %s no lote %d (%s).", player.DisplayName, P.name, slot, lot.street), "info")
 	-- leva o dono para o prédio dele
 	if player.Character then
 		player.Character:PivotTo(P.isp.spawn.CFrame + Vector3.new(0, 3, 0))
@@ -277,10 +293,11 @@ function Providers.close(P: any, reason: string)
 	local f = slotFolder(P.slot)
 	f:SetAttribute("Open", false)
 	f:SetAttribute("Name", "")
-	for _, label in P.isp.nameLabels do
-		label.Text = "PRÉDIO DISPONÍVEL"
-	end
-	Providers.notify(nil, nil, string.format("O provedor %s fechou (%s). O prédio está disponível.", P.name, reason), "alarm")
+	f:SetAttribute("Owner", "")
+	f:SetAttribute("Partners", "")
+	-- o prédio é desmontado e o lote volta a ficar livre
+	World.destroyIsp(P.slot)
+	Providers.notify(nil, nil, string.format("O provedor %s fechou (%s). O lote %d está livre para outro provedor.", P.name, reason, P.slot), "alarm")
 end
 
 -- Jogador saiu do jogo: passa o provedor para o último sócio, ou fecha.
@@ -317,12 +334,47 @@ function Providers.start(world: any)
 	Providers.world = world
 	local function onPlayer(player: Player)
 		player:SetAttribute("Wallet", Config.StartMoney)
+		-- quem é de um provedor renasce no prédio dele
+		player.CharacterAdded:Connect(function(char)
+			local P = Providers.of(player)
+			if not P or not P.isp then
+				return
+			end
+			char:WaitForChild("HumanoidRootPart", 5)
+			task.wait(0.1)
+			if P.isp and P.isp.spawn.Parent then
+				char:PivotTo(P.isp.spawn.CFrame + Vector3.new(0, 3, 0))
+			end
+		end)
 	end
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, pl in Players:GetPlayers() do
 		onPlayer(pl)
 	end
 	Players.PlayerRemoving:Connect(onLeave)
+
+	-- placa do lote vazio: abre o menu Provedor
+	local function hookLot(sign: Instance)
+		local pp = sign:FindFirstChild("ConstruirPrompt") :: ProximityPrompt?
+		local slot = sign:GetAttribute("Lot")
+		if not pp or not slot then
+			return
+		end
+		pp.Triggered:Connect(function(player)
+			if Providers.slots[slot] then
+				return
+			end
+			if Providers.of(player) then
+				Providers.notify(nil, player, "Você já faz parte de um provedor. Cada jogador só pode ser dono de um.", "error")
+				return
+			end
+			Remotes.ProviderMenu:FireClient(player, slot)
+		end)
+	end
+	CollectionService:GetInstanceAddedSignal("LotSign"):Connect(hookLot)
+	for _, sign in CollectionService:GetTagged("LotSign") do
+		hookLot(sign)
+	end
 
 	-- menu "Provedor": abrir, entrar como sócio, aportar, renomear e mudar o preço
 	Remotes.ProviderAction.OnServerEvent:Connect(function(player, action, a, b)

@@ -128,6 +128,39 @@ Dialogs.Talk = {
 	protest = "Estamos aqui na frente porque a vila tá sem internet! Só saio daqui quando a internet chegar!",
 }
 
+-- Falas do Jardim das Acácias (bairro nobre): exigentes, pagam caro e cobram qualidade.
+-- Quando existe fala aqui para a situação, ela aparece mais vezes que a comum.
+Dialogs.Nobre = {
+	online_happy = {
+		"Fibra impecável. Minha reunião com Lisboa não travou nem um segundo.",
+		"Excelente serviço. Vou recomendar ao pessoal do clube.",
+		"Streaming em 4K na sala de cinema, como deve ser.",
+	},
+	online_grumpy = {
+		"Pelo que eu pago, esperava um atendimento à altura.",
+		"Vou pedir ao meu advogado para ler esse contrato de novo.",
+	},
+	slow = {
+		"Lenta? Eu pago plano premium, isso é inaceitável.",
+		"A videoconferência com os investidores está travando. Resolvam!",
+	},
+	offline = {
+		"Sem internet numa casa dessas? Quero falar com o gerente.",
+		"A automação da casa parou. Nem o portão abre direito!",
+	},
+	offline_long = {
+		"Horas sem internet. Já estou cotando outro provedor.",
+		"Meu escritório inteiro parado. Isso vai dar processo.",
+	},
+	waiting = {
+		"Ouvi dizer que vem fibra para o Jardim. Pago bem por um serviço de primeira.",
+		"Preço não é problema, eu quero estabilidade.",
+	},
+	waiting_late = {
+		"Até agora nada de fibra no Jardim das Acácias? Que vergonha para a cidade.",
+	},
+}
+
 Dialogs.NeighborHint = "E olha, o vizinho também falou que caiu na mesma hora."
 Dialogs.AloneHint = "Os vizinhos disseram que lá tá funcionando, só aqui que não."
 

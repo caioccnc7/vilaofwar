@@ -12,9 +12,9 @@ Config.DayEndHour = 20
 Config.HourSeconds = 60 -- 12 horas de jogo = 12 minutos reais
 
 -- Economia (R$)
--- A vila começa SEM internet: sem roteador, sem OLT, sem link, sem ferramentas e sem
--- estoque. O capital inicial paga tudo isso para as 16 casas (cerca de R$ 9.650) e
--- ainda sobra uma reserva para os custos dos primeiros dias.
+-- A vila começa SEM internet e SEM prédios de provedor. Do dinheiro inicial, R$ 2.500
+-- pagam a obra do prédio (Config.Lots) e o resto (R$ 9.500) monta o rack, o link, as
+-- ferramentas e os insumos das primeiras casas. O crédito do governo ajuda a crescer.
 Config.StartMoney = 12000
 Config.DailyFeePerCustomer = 40 -- preço inicial da mensalidade (rateada por dia) de um provedor novo
 -- Preço que o provedor pode cobrar (por dia de jogo). Cada morador aceita pagar até um
@@ -26,6 +26,38 @@ Config.Price = {
 	WillingMax = 75,
 }
 Config.InstallFee = 100 -- taxa de instalação cobrada do cliente
+
+-- Lotes de provedor (Shared/CityMap): a cidade começa sem prédios de provedor. Quem
+-- abre um provedor escolhe um lote livre e paga a obra com o próprio dinheiro; o que
+-- sobra vira o caixa. Máximo de 5 provedores por servidor, 1 por jogador (dono).
+Config.Lots = {
+	BuildCost = 2500, -- obra do prédio (térreo, NOC, datacenter e garagem)
+}
+
+-- Jardim das Acácias (bairro nobre): os moradores aceitam pagar mais caro
+Config.Nobre = {
+	WillingMin = 70,
+	WillingMax = 120,
+}
+
+-- Licitações dos prédios públicos (regras no LicitacaoService). Preços por dia.
+Config.Bids = {
+	FirstDay = 2, -- os primeiros editais abrem no dia 2
+	OpenHours = 3, -- horas de jogo para mandar proposta
+	ContractDays = 5, -- duração do contrato
+	InstallDays = 1, -- prazo para ligar e ativar o prédio depois de ganhar
+	MinClients = 3, -- atestado de capacidade técnica: clientes online na hora do resultado
+	FloorFraction = 0.5, -- proposta mínima = metade do valor de referência
+	RetryHours = 2, -- licitação sem vencedor abre de novo depois disso
+	Fine = 1500, -- multa por não instalar no prazo ou estourar o SLA
+	SlaMult = 5, -- multa por hora sem internet: 5x a de uma casa
+	Orgs = {
+		{ key = "prefeitura", name = "Prefeitura", ref = 300, slaHours = 4, demand = 4 },
+		{ key = "escola", name = "Escola Municipal", ref = 200, slaHours = 6, demand = 5 },
+		{ key = "policia", name = "Delegacia de Polícia", ref = 250, slaHours = 3, demand = 3 },
+		{ key = "hospital", name = "Hospital Municipal", ref = 400, slaHours = 2, demand = 4 },
+	},
+}
 
 -- Ferramentas do provedor: compradas uma vez, todos da equipe pegam no almoxarifado
 Config.ToolPrices = {

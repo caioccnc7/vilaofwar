@@ -7,6 +7,7 @@ local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local CityMap = require(ReplicatedStorage.Shared.CityMap)
 local NetworkGraph = require(ReplicatedStorage.Shared.NetworkGraph)
 local World = require(script.Parent.WorldBuilder)
 local Remotes = require(script.Parent.Remotes)
@@ -19,7 +20,7 @@ Net.houses = {} -- por índice: { house, onuId, edgeId, contract, slot, price, c
 
 -- Dados de rede de cada provedor (por prédio): link, tráfego e alarmes
 Net.bySlot = {}
-for slot = 1, 2 do
+for slot = 1, #CityMap.Lots do
 	Net.bySlot[slot] = { upstreamMbps = 0, trafficMbps = 0, demandMbps = 0, utilization = 0, alarms = {} }
 end
 function Net.slot(slot: number): any
@@ -281,9 +282,22 @@ local function dropPoints(h: any, ctoBox: BasePart): { Vector3 }
 end
 
 -- CTOs da rede: cada uma numa porta PON da OLT, atrás de um splitter primário
-Net.CtoOrder = { "CTO_A", "CTO_B", "CTO_C", "CTO_D" }
-Net.CtoSplitter = { CTO_A = "SPL", CTO_B = "SPL", CTO_C = "SPL2", CTO_D = "SPL2" }
-local CtoBoxKey = { CTO_A = "ctoA", CTO_B = "ctoB", CTO_C = "ctoC", CTO_D = "ctoD" }
+Net.CtoOrder = { "CTO_A", "CTO_B", "CTO_C", "CTO_D", "CTO_E", "CTO_F", "CTO_G" }
+Net.CtoSplitter = { CTO_A = "SPL", CTO_B = "SPL", CTO_C = "SPL2", CTO_D = "SPL2", CTO_E = "SPL3", CTO_F = "SPL3", CTO_G = "SPL4" }
+local CtoBoxKey = { CTO_A = "ctoA", CTO_B = "ctoB", CTO_C = "ctoC", CTO_D = "ctoD", CTO_E = "ctoE", CTO_F = "ctoF", CTO_G = "ctoG" }
+-- onde fica cada CTO (aparece nas etiquetas do DIO e no rack)
+Net.CtoArea = {
+	CTO_A = "Rua Principal norte",
+	CTO_B = "Rua Principal sul",
+	CTO_C = "Palmeiras oeste",
+	CTO_D = "Palmeiras leste",
+	CTO_E = "Acácias norte",
+	CTO_F = "Acácias sul",
+	CTO_G = "Centro Cívico",
+}
+-- splitters primários da rua (rede neutra): cada provedor puxa um tronco até cada um
+Net.SplitterOrder = { "SPL", "SPL2", "SPL3", "SPL4" }
+local SplitterBoxKey = { SPL = "splitter", SPL2 = "splitter2", SPL3 = "splitter3", SPL4 = "splitter4" }
 
 local function ctoFor(index: number): (string, BasePart)
 	local id = Net.houses[index].house.cto
@@ -301,7 +315,7 @@ function Net.newSn(): string
 end
 
 -- Porta PON da OLT que atende cada CTO
-Net.PonPort = { CTO_A = 0, CTO_B = 1, CTO_C = 2, CTO_D = 3 }
+Net.PonPort = { CTO_A = 0, CTO_B = 1, CTO_C = 2, CTO_D = 3, CTO_E = 4, CTO_F = 5, CTO_G = 6 }
 function Net.ponPortOf(h: any): number
 	return Net.PonPort[h.house.cto] or 0
 end
@@ -323,7 +337,7 @@ local function connectHouse(h: any, P: any)
 	h.edgeId = edgeId
 	h.contract = "active"
 	h.slot = P.slot
-	h.price = P.price
+	h.price = h.bidPrice or P.price -- prédio público paga o valor da licitação
 	h.sn = Net.newSn()
 	h.onuDay = game_.day -- a ONU só pode queimar depois de Config.Onu.MinAgeDays dias
 end
@@ -361,60 +375,136 @@ local function disconnectHouse(h: any)
 	h.edgeId = nil
 end
 
+local function removeVisual(edgeId: string)
+	local v = visuals[edgeId]
+	if v then
+		clearExtras(v)
+		for _, seg in v.segments do
+			seg:Destroy()
+		end
+		visuals[edgeId] = nil
+	end
+	if breaks[edgeId] then
+		breaks[edgeId]:Destroy()
+		breaks[edgeId] = nil
+	end
+end
+
+local function trunkId(slot: number, splId: string): string
+	return "TRONCO" .. slot .. "_" .. splId
+end
+Net.trunkId = trunkId
+
+-- Prédio novo: puxa um tronco da OLT dele até cada splitter da rua (rede neutra).
+-- O cabo sai do prédio e segue pela linha de postes (lado norte/oeste das ruas).
+function Net.attachProvider(slot: number)
+	local isp = world.isps[slot]
+	if not isp then
+		return
+	end
+	local olt = Net.coreId(slot, "olt")
+	local h = 15.6 - 0.5 * (slot - 1) -- cada provedor numa altura do poste
+	for _, splId in Net.SplitterOrder do
+		local id = trunkId(slot, splId)
+		if Net.graph.edges[id] then
+			continue
+		end
+		local spl = Net.graph.nodes[splId]
+		local box = world.boxes[SplitterBoxKey[splId]]
+		local pts = { isp.trunkExit }
+		for _, p in World.path(isp.trunkExit, box.Position, h, "nw") do
+			table.insert(pts, p)
+		end
+		table.insert(pts, box.Position + Vector3.new(0, 1.3, 0))
+		local length = 0
+		for k = 1, #pts - 1 do
+			length += (pts[k + 1] - pts[k]).Magnitude
+		end
+		Net.graph:addEdge(id, olt, splId, { kind = "trunk", label = "Tronco → " .. spl.label, lossDb = 1.0 + length * 0.003, provider = slot })
+		drawEdge(id, pts, "trunk")
+	end
+end
+
+-- Prédio desmontado: tira os troncos dele da rua
+function Net.detachProvider(slot: number)
+	for _, splId in Net.SplitterOrder do
+		local id = trunkId(slot, splId)
+		removeVisual(id)
+		Net.graph:removeEdge(id)
+	end
+end
+
 local function buildNetwork()
 	local g = Net.graph
-	local isp = world.isp
 	local P = world.poles
-	-- núcleo de cada provedor (um por prédio)
-	for slot = 1, 2 do
-		local dx = world.isps[slot].offset.X
+	-- núcleo de cada provedor (um por lote); os troncos só aparecem quando o prédio é construído
+	for slot, off in World.IspOffsets do
 		local function id(kind: string): string
 			return Net.coreId(slot, kind)
 		end
 		local suffix = if slot == 1 then "" else "_" .. slot
-		g:addNode(id("upstream"), "upstream", { label = "Upstream", x = -150 + dx, z = -62, provider = slot })
-		g:addNode(id("router"), "router", { label = "Roteador", x = -128 + dx, z = -52, provider = slot })
-		g:addNode(id("dns"), "dns", { label = "DNS", x = -112 + dx, z = -52, provider = slot })
-		g:addNode(id("olt"), "olt", { label = "OLT", x = -120 + dx, z = -40, provider = slot })
+		g:addNode(id("upstream"), "upstream", { label = "Upstream", x = -150 + off.X, z = -62 + off.Z, provider = slot })
+		g:addNode(id("router"), "router", { label = "Roteador", x = -128 + off.X, z = -52 + off.Z, provider = slot })
+		g:addNode(id("dns"), "dns", { label = "DNS", x = -112 + off.X, z = -52 + off.Z, provider = slot })
+		g:addNode(id("olt"), "olt", { label = "OLT", x = -120 + off.X, z = -40 + off.Z, provider = slot })
 		g:addEdge("CORE1" .. suffix, id("upstream"), id("router"), { kind = "core" })
 		g:addEdge("CORE2" .. suffix, id("router"), id("olt"), { kind = "core" })
 		g:addEdge("CORE3" .. suffix, id("router"), id("dns"), { kind = "core" })
 	end
-	local isp2 = world.isps[2]
+	local down = Vector3.new(0, -1, 0)
+	local function boxXZ(key: string): (number, number)
+		local b = world.boxes[key]
+		return b.Position.X, b.Position.Z
+	end
 
-	g:addNode("SPL", "splitter", { label = "Splitter 1:2", lossDb = 3.7, x = -60, z = -16.5 })
+	-- Rua Principal
+	local x, z = boxXZ("splitter")
+	g:addNode("SPL", "splitter", { label = "Splitter 1:2 Principal", lossDb = 3.7, x = x, z = z })
 	g:addNode("CTO_A", "splitter", { label = "CTO A", lossDb = 10.5, x = 35, z = -16.5 })
 	g:addNode("CTO_B", "splitter", { label = "CTO B", lossDb = 10.5, x = 35, z = 16.5 })
-
-	g:addEdge("TRONCO", "OLT", "SPL", { kind = "trunk", label = "Fibra tronco", lossDb = 2.0, provider = 1 })
-	drawEdge("TRONCO", { isp.trunkExit, P["N-85"].top, P["N-60"].top }, "trunk")
-	-- tronco do prédio 2 até o mesmo splitter (rede neutra), um pouco mais baixo nos postes
-	local low3 = Vector3.new(0, -3, 0)
-	g:addEdge("TRONCO_P2", "OLT_2", "SPL", { kind = "trunk", label = "Fibra tronco (prédio 2)", lossDb = 3.0, provider = 2 })
-	drawEdge("TRONCO_P2", { isp2.trunkExit, P["N185"].top + low3, P["N135"].top + low3, P["N85"].top + low3, P["N35"].top + low3, P["N-15"].top + low3, P["N-60"].top + low3 }, "trunk")
 	g:addEdge("DIST_A", "SPL", "CTO_A", { kind = "distribution", label = "Distribuição A", lossDb = 1.5 })
 	drawEdge("DIST_A", { P["N-60"].top, P["N-15"].top, P["N35"].top }, "distribution")
-	local down = Vector3.new(0, -1, 0)
 	g:addEdge("DIST_B", "SPL", "CTO_B", { kind = "distribution", label = "Distribuição B", lossDb = 1.8 })
 	drawEdge("DIST_B", { P["N-60"].top + down, P["N-15"].top + down, P["S-15"].top + down, P["S35"].top + down }, "distribution")
-	-- trecho sem uso até o fim da rua (só visual)
 	World.cable({ P["S35"].top + down, P["S85"].top + down, P["S135"].top + down }, CableColor.distribution, world.cablesFolder, "Reserva_S")
 
-	-- Rua das Palmeiras: segundo tronco, saindo do mesmo DIO e correndo pelos postes do lado norte
-	local down2 = down * 2
-	g:addNode("SPL2", "splitter", { label = "Splitter 1:2 Palmeiras", lossDb = 3.7, x = 283.5, z = -35 })
+	-- Rua das Palmeiras
+	x, z = boxXZ("splitter2")
+	g:addNode("SPL2", "splitter", { label = "Splitter 1:2 Palmeiras", lossDb = 3.7, x = x, z = z })
 	g:addNode("CTO_C", "splitter", { label = "CTO C", lossDb = 10.5, x = 283.5, z = -135 })
 	g:addNode("CTO_D", "splitter", { label = "CTO D", lossDb = 10.5, x = 316.5, z = -135 })
-	g:addEdge("TRONCO2", "OLT", "SPL2", { kind = "trunk", label = "Fibra tronco Palmeiras", lossDb = 3.2, provider = 1 })
-	g:addEdge("TRONCO2_P2", "OLT_2", "SPL2", { kind = "trunk", label = "Fibra tronco Palmeiras (prédio 2)", lossDb = 2.0, provider = 2 })
-	drawEdge("TRONCO2_P2", { isp2.trunkExit + low3, P["N235"].top + low3, P["W-35"].top + low3 }, "trunk")
-	drawEdge("TRONCO2", { isp.trunkExit + down, P["N-85"].top + down2, P["N-60"].top + down2, P["N-15"].top + down2, P["N35"].top + down2, P["N85"].top + down2, P["N135"].top + down2, P["N185"].top + down2, P["N235"].top + down2, P["W-35"].top }, "trunk")
 	g:addEdge("DIST_C", "SPL2", "CTO_C", { kind = "distribution", label = "Distribuição C", lossDb = 1.4 })
 	drawEdge("DIST_C", { P["W-35"].top, P["W-85"].top, P["W-135"].top }, "distribution")
 	g:addEdge("DIST_D", "SPL2", "CTO_D", { kind = "distribution", label = "Distribuição D", lossDb = 1.7 })
 	drawEdge("DIST_D", { P["W-35"].top + down, P["E-35"].top + down, P["E-85"].top + down, P["E-135"].top + down }, "distribution")
 	World.cable({ P["W-135"].top, P["W-185"].top, P["W-235"].top }, CableColor.distribution, world.cablesFolder, "Reserva_W")
 	World.cable({ P["E-135"].top + down, P["E-185"].top + down, P["E-235"].top + down }, CableColor.distribution, world.cablesFolder, "Reserva_E")
+
+	-- Jardim das Acácias (bairro nobre)
+	x, z = boxXZ("splitter3")
+	g:addNode("SPL3", "splitter", { label = "Splitter 1:2 Acácias", lossDb = 3.7, x = x, z = z })
+	g:addNode("CTO_E", "splitter", { label = "CTO E", lossDb = 10.5, x = 0, z = 313.5 })
+	g:addNode("CTO_F", "splitter", { label = "CTO F", lossDb = 10.5, x = 0, z = 346.5 })
+	local an, as = {}, {}
+	for px = -240, 0, 60 do
+		table.insert(an, P["AN" .. px].top)
+		table.insert(as, P["AS" .. px].top + down)
+	end
+	g:addEdge("DIST_E", "SPL3", "CTO_E", { kind = "distribution", label = "Distribuição E", lossDb = 1.5 })
+	drawEdge("DIST_E", an, "distribution")
+	g:addEdge("DIST_F", "SPL3", "CTO_F", { kind = "distribution", label = "Distribuição F", lossDb = 1.8 })
+	table.insert(as, 1, P["AN-240"].top + down)
+	drawEdge("DIST_F", as, "distribution")
+	World.cable({ P.AN0.top, P.AN60.top, P.AN120.top, P.AN180.top }, CableColor.distribution, world.cablesFolder, "Reserva_AN")
+	World.cable({ P.AS0.top + down, P.AS60.top + down, P.AS120.top + down, P.AS180.top + down }, CableColor.distribution, world.cablesFolder, "Reserva_AS")
+
+	-- Centro Cívico (Prefeitura, Escola, Delegacia e Hospital)
+	x, z = boxXZ("splitter4")
+	g:addNode("SPL4", "splitter", { label = "Splitter 1:2 Centro Cívico", lossDb = 3.7, x = x, z = z })
+	g:addNode("CTO_G", "splitter", { label = "CTO G", lossDb = 10.5, x = 85, z = -283.5 })
+	g:addEdge("DIST_G", "SPL4", "CTO_G", { kind = "distribution", label = "Distribuição G", lossDb = 1.2 })
+	drawEdge("DIST_G", { P.CN85.top + down, P.CS85.top + down }, "distribution")
+	World.cable({ P["CS-65"].top + down, P["CS-15"].top + down, P.CS35.top + down, P.CS85.top + down, P.CS135.top + down, P.CS185.top + down, P.CS235.top + down }, CableColor.distribution, world.cablesFolder, "Reserva_CS")
 
 	for _, house in world.houses do
 		local h = {
@@ -433,7 +523,12 @@ local function buildNetwork()
 			price = nil, -- preço do contrato (fica igual até o cliente cancelar)
 			choice = nil, -- provedor que o morador escolheria agora (o mais barato que ele aceita)
 			willing = math.random(Config.Price.WillingMin, Config.Price.WillingMax), -- preço máximo que aceita pagar
+			bidPrice = nil, -- prédio público: valor do contrato da licitação
 		}
+		-- no Jardim das Acácias o morador aceita pagar mais (e cobra mais também)
+		if house.zone == "jardim" then
+			h.willing = math.random(Config.Nobre.WillingMin, Config.Nobre.WillingMax)
+		end
 		-- a vila começa sem internet: nenhuma casa ligada
 		Net.houses[house.index] = h
 	end
@@ -927,6 +1022,9 @@ local function refreshHousePrompts(h: any)
 		local label = gui:FindFirstChildOfClass("TextLabel")
 		local P = h.choice and Providers.slots[h.choice]
 		local text = if P then "Quero internet!\n" .. P.name else "Quero internet!"
+		if h.house.public then
+			text = if P then "Licitação: " .. P.name .. "\naguardando instalação" else "Aguardando licitação"
+		end
 		if label and label.Text ~= text then
 			label.Text = text
 		end
@@ -971,6 +1069,11 @@ local function setupBoxPrompts()
 		{ part = world.boxes.splitter2, id = "SPL2", label = "Splitter Palmeiras" },
 		{ part = world.boxes.ctoC, id = "CTO_C", label = "CTO C" },
 		{ part = world.boxes.ctoD, id = "CTO_D", label = "CTO D" },
+		{ part = world.boxes.splitter3, id = "SPL3", label = "Splitter Acácias" },
+		{ part = world.boxes.ctoE, id = "CTO_E", label = "CTO E" },
+		{ part = world.boxes.ctoF, id = "CTO_F", label = "CTO F" },
+		{ part = world.boxes.splitter4, id = "SPL4", label = "Splitter Centro Cívico" },
+		{ part = world.boxes.ctoG, id = "CTO_G", label = "CTO G" },
 	}
 	for _, b in boxes do
 		local p = prompt(b.part, "Medir sinal na caixa", b.label, 0.5, 18)
@@ -989,7 +1092,15 @@ local function setupBoxPrompts()
 		end)
 	end
 
-	for slot, isp in world.isps do
+end
+
+-- Prédio construído: liga o almoxarifado dele (as ferramentas do provedor)
+function Net.setupIsp(slot: number)
+	local isp = world.isps[slot]
+	if not isp then
+		return
+	end
+	do
 		local shelf = prompt(isp.shelf, "Pegar ferramentas", "Almoxarifado", 0.5, 12)
 		shelf.Triggered:Connect(function(player)
 			local P = providerOf(player)
@@ -1074,15 +1185,16 @@ end
 function Net.tick(dt: number)
 	local results = Net.graph:computeOnus()
 	local factor = hourFactor(game_.hour)
-	local demand = { 0, 0 }
+	local demand = {}
 	for _, h in Net.houses do
 		if h.contract == "active" and h.onuId and h.slot then
 			local r = results[h.onuId]
 			if r and (r.status == "online" or r.status == "unstable") then
-				demand[h.slot] += 9 * factor * (0.85 + math.random() * 0.3)
+				-- prédio público usa mais banda que uma casa
+				demand[h.slot] = (demand[h.slot] or 0) + 9 * (h.house.demand or 1) * factor * (0.85 + math.random() * 0.3)
 			end
-		else
-			h.choice = choiceOf(h)
+		elseif not h.house.public then
+			h.choice = choiceOf(h) -- prédio público: quem escolhe é a licitação
 		end
 	end
 	local saturatedBy = {}

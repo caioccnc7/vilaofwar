@@ -1,4 +1,4 @@
--- Ponto de entrada do servidor: monta a Vila Aurora, liga a rede e roda o relógio do jogo.
+-- Ponto de entrada do servidor: monta a Vila Aurora, liga a rede, as licitações e roda o relógio do jogo.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,6 +15,7 @@ local RackModule = require(script.Parent.RackService)
 local TechModule = require(script.Parent.TechService)
 local ErpModule = require(script.Parent.ErpService)
 local OltCli = require(script.Parent.Cli.OltCli)
+local Bids = require(script.Parent.LicitacaoService)
 
 local world = World.build()
 
@@ -25,6 +26,7 @@ Residents.init(world, Net, Game)
 Director.init(Net)
 RackModule.start()
 ErpModule.start()
+Bids.init(Net, Game)
 
 -- Fases de cada provedor: prazo de implantação, manifestação e falência
 local function phaseHandler(P: any)
@@ -50,6 +52,8 @@ end
 -- Provedor novo: caixa, rack, loja, equipe e carro no prédio dele
 Providers.onOpen = function(P: any)
 	Net.resetSlot(P.slot)
+	Net.attachProvider(P.slot) -- troncos do prédio novo até os splitters da rua
+	Net.setupIsp(P.slot)
 	P.game = Game.newProvider(P)
 	P.rack = RackModule.new(P, world, Net)
 	P.erp = ErpModule.new(P, world, Net) -- antes da equipe: os técnicos trabalham pela fila do ERP
@@ -74,6 +78,7 @@ Providers.onClose = function(P: any, _reason: string)
 	if P.erp then
 		P.erp.destroy()
 	end
+	Net.detachProvider(P.slot)
 	Net.resetSlot(P.slot)
 	-- depois que a equipe sai do provedor, as ferramentas dele somem da mochila
 	task.defer(function()
@@ -105,6 +110,14 @@ Providers.start(world)
 --   game.ServerStorage.FibraTeste:Invoke("instalar", 3)        instala a casa 3 na hora (gasta ONU e drop)
 --   game.ServerStorage.FibraTeste:Invoke("olt", "display service-port all")   roda uma linha no console da OLT
 --   game.ServerStorage.FibraTeste:Invoke("ativar", 3)          ativa a casa 3 na OLT pelo ERP
+--   game.ServerStorage.FibraTeste:Invoke("lote", 4)            o 1º jogador constrói o provedor no lote 4
+--   game.ServerStorage.FibraTeste:Invoke("licitacao")          abre todas as licitações agora
+--   game.ServerStorage.FibraTeste:Invoke("proposta", 180)      o provedor alvo propõe R$ 180 em todas as abertas
+--   game.ServerStorage.FibraTeste:Invoke("resultado")          fecha as licitações abertas e escolhe o vencedor
+--   game.ServerStorage.FibraTeste:Invoke("licitacoes")         resumo das licitações
+--   game.ServerStorage.FibraTeste:Invoke("atestado", 0)        muda quantos clientes online o atestado pede
+--   game.ServerStorage.FibraTeste:Invoke("sinal", 3)           caminho óptico da casa 3 até a OLT do provedor alvo
+--   game.ServerStorage.FibraTeste:Invoke("ir", 25)             leva o 1º jogador até a casa (ou prédio público) N
 local target = 1
 local function cur(): any
 	return Providers.slots[target] or Providers.list()[1]
@@ -122,6 +135,72 @@ Debug = {
 		end
 		local P = Providers.open(pl, nil, name)
 		return if P then "aberto no prédio " .. P.slot else "não abriu"
+	end,
+	lote = function(slot: number)
+		local pl = Players:GetPlayers()[1]
+		if not pl then
+			return "nenhum jogador"
+		end
+		local P = Providers.open(pl, slot, "Teste Lote " .. tostring(slot))
+		target = slot
+		return if P then "provedor no lote " .. P.slot else "não abriu"
+	end,
+	licitacao = function()
+		Bids.forceOpen()
+		return "licitações abertas"
+	end,
+	resultado = function()
+		Bids.forceClose()
+		return "licitações fechadas"
+	end,
+	-- muda o atestado (clientes online exigidos) só nesta sessão de teste
+	atestado = function(n: number)
+		Config.Bids.MinClients = n
+		return "atestado: " .. n .. " clientes"
+	end,
+	proposta = function(price: number)
+		local P = cur()
+		if not P or not P.owner then
+			return "sem provedor"
+		end
+		for _, b in Bids.list do
+			Bids.bid(P.owner, b.key, price)
+		end
+		return "propostas enviadas"
+	end,
+	licitacoes = function()
+		local out = {}
+		for _, b in Bids.list do
+			local W = b.winner and Providers.slots[b.winner]
+			table.insert(out, string.format("%s: %s %s %s (%s)", b.key, b.status, if W then W.name else "-", tostring(b.price or ""), tostring(b.last or "")))
+		end
+		return table.concat(out, " | ")
+	end,
+	-- diagnóstico: caminho óptico da casa N até a OLT do provedor alvo
+	sinal = function(index: number)
+		local P = cur()
+		local h = Net.houses[index]
+		if not (P and h and h.onuId) then
+			return "sem ONU"
+		end
+		local ok, loss, why = Net.graph:traceToOlt(h.onuId, P.slot)
+		local chain = {}
+		local node = Net.graph.nodes[h.onuId]
+		local guard = 0
+		while node and node.kind ~= "olt" and guard < 20 do
+			guard += 1
+			local pe = if node.parentBy then node.parentBy[P.slot] else node.parentEdge
+			table.insert(chain, node.id .. (if node.powered then "" else "(sem energia)") .. ">" .. tostring(pe))
+			node = pe and Net.graph.edges[pe] and Net.graph.nodes[Net.graph.edges[pe].from]
+		end
+		return string.format("sn=%s pon=%s ok=%s perda=%.1f motivo=%s contrato=%s status=%s | %s", tostring(h.sn), tostring(Net.ponPortOf(h)), tostring(ok), loss, tostring(why), tostring(h.contract), tostring(h.status), table.concat(chain, " "))
+	end,
+	ir = function(index: number)
+		local pl = Players:GetPlayers()[1]
+		local h = Net.houses[index]
+		if pl and pl.Character and h then
+			pl.Character:PivotTo(CFrame.new(h.house.doorPoint + Vector3.new(0, 4, 0)))
+		end
 	end,
 	alvo = function(slot: number)
 		target = slot
@@ -151,7 +230,7 @@ Debug = {
 		cur().game.money += Config.Car.Price
 		cur().tech.Car.buy(nil)
 	end,
-	-- rompe um cabo específico (ex.: "TRONCO2", "DIST_C", "DROP9")
+	-- rompe um cabo específico (ex.: "TRONCO1_SPL2", "DIST_E", "DROP9")
 	romper = function(edgeId: string)
 		Net.breakEdge(edgeId)
 	end,
@@ -283,7 +362,7 @@ debugFn.Name = "FibraTeste"
 debugFn.OnInvoke = function(cmd: string, arg: any)
 	local f = Debug[cmd]
 	if not f then
-		return "comandos: abrir, alvo, incidente, hora, dinheiro, kit, semnet, tecnico, carro, romper, equipe, prazo, humor, link, escolhas, atendente, pedido, os, envelhecer"
+		return "comandos: abrir, lote, alvo, licitacao, proposta, resultado, licitacoes, ir, incidente, hora, dinheiro, kit, semnet, tecnico, carro, romper, equipe, prazo, humor, link, escolhas, atendente, pedido, os, envelhecer"
 	end
 	return f(arg) or "ok"
 end
@@ -298,7 +377,7 @@ Players.PlayerAdded:Connect(function(player)
 			return
 		end
 		welcomed[player] = true
-		Remotes.notify(player, string.format("Bem-vindo à Fibra da Vila! Você chegou com R$ %d. Abra o seu provedor ou entre como sócio de outro (tecla P). Guia na Wiki (J).", Config.StartMoney), "info")
+		Remotes.notify(player, string.format("Bem-vindo à %s! Você chegou com R$ %d. Construa o seu provedor num lote livre (R$ %d de obra) ou entre como sócio de outro (tecla P). Guia na Wiki (J).", Config.CityName, Config.StartMoney, Config.Lots.BuildCost), "info")
 		Remotes.ProviderMenu:FireClient(player)
 	end)
 end)
@@ -313,6 +392,7 @@ while true do
 	Net.tick(dt)
 	Residents.tick(dt)
 	Director.tick(dt)
+	Bids.tick(dt)
 	for _, P in Providers.list() do
 		P.game.tick(dt)
 		P.erp.tick(dt)

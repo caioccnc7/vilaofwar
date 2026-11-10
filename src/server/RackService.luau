@@ -1411,7 +1411,7 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 		local ctos = {}
 		local splitters = {}
 		local splByCto = {}
-		for _, splId in { "SPL", "SPL2" } do
+		for _, splId in net.SplitterOrder do
 			local sn = graph.nodes[splId]
 			local entry = { id = splId, label = if sn then sn.label else splId, state = edgeStateOf(splId), ctos = {} }
 			table.insert(splitters, entry)
@@ -1570,11 +1570,11 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 		local links = {
 			{ name = "ether1 → Operadora", color = "red", state = if rUp then "ok" else "down" },
 			{ name = "ether2 → OLT uplink", color = "blue", state = if rUp and oUp then "ok" else "down" },
-			{ name = "PON 0/1/0 → DIO P1 → CTO A", color = "yellow", state = fiber("CTO_A") },
-			{ name = "PON 0/1/1 → DIO P2 → CTO B", color = "yellow", state = fiber("CTO_B") },
-			{ name = "PON 0/1/2 → DIO P3 → CTO C (Palmeiras)", color = "yellow", state = fiber("CTO_C") },
-			{ name = "PON 0/1/3 → DIO P4 → CTO D (Palmeiras)", color = "yellow", state = fiber("CTO_D") },
 		}
+		for i, ctoId in net.CtoOrder do
+			local letter = string.sub(ctoId, -1)
+			table.insert(links, { name = string.format("PON 0/1/%d → DIO P%d → CTO %s (%s)", net.PonPort[ctoId], i, letter, net.CtoArea[ctoId] or ""), color = "yellow", state = fiber(ctoId) })
+		end
 		return { devices = devs, links = links, slots = SLOT_COUNT, free = SLOT_COUNT - #Rack.devices }
 	end
 

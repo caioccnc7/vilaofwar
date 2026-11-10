@@ -361,7 +361,7 @@ function Game.newProvider(P: any): any
 			elseif h.status == "unstable" then
 				stats.upSeconds += dt * 0.5
 			else
-				local p = Config.SlaPenaltyPerHour * dt / Config.HourSeconds
+				local p = Config.SlaPenaltyPerHour * (h.house.slaMult or 1) * dt / Config.HourSeconds -- prédio público multa mais
 				stats.penalties += p
 				penaltyAcc += p
 			end

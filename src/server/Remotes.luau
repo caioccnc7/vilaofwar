@@ -37,6 +37,8 @@ Remotes.HouseMenu = event("HouseMenu") -- servidor -> cliente: abre/atualiza o m
 Remotes.HouseAction = event("HouseAction") -- cliente -> servidor: ação escolhida no menu da caixa da casa
 Remotes.ErpOpen = event("ErpOpen") -- servidor -> cliente: abre/atualiza a tela do ERP (nil fecha)
 Remotes.ErpAction = event("ErpAction") -- cliente -> servidor: abrir, agendar, comprar, contratar...
+Remotes.BidAction = event("BidAction") -- cliente -> servidor: proposta (ou retirada) numa licitação
+Remotes.BidOpen = event("BidOpen") -- servidor -> cliente: abre a tela das licitações (mural da Prefeitura)
 
 local fn = folder:FindFirstChild("ConsoleCommand")
 if not fn then
@@ -53,6 +55,14 @@ if not comp then
 	comp.Parent = folder
 end
 Remotes.ConsoleComplete = comp :: RemoteFunction -- cliente -> servidor: TAB no console (completa a linha)
+
+local bidState = folder:FindFirstChild("BidState")
+if not bidState then
+	bidState = Instance.new("RemoteFunction")
+	bidState.Name = "BidState"
+	bidState.Parent = folder
+end
+Remotes.BidState = bidState :: RemoteFunction -- cliente -> servidor: lista das licitações (com a proposta do seu provedor)
 
 function Remotes.notify(player: Player?, text: string, kind: string?)
 	if player then
