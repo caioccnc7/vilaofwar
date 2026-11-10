@@ -36,19 +36,40 @@ local gui = new("ScreenGui", { Name = "Console", ResetOnSpawn = false, DisplayOr
 -- Terminal
 -- ---------------------------------------------------------------------------
 
-local win = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.72, 0.7), BackgroundColor3 = Color3.fromRGB(8, 10, 12), Visible = false, Parent = gui })
+local win = new("Frame", { Name = "Terminal", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.72, 0.7), BackgroundColor3 = Color3.fromRGB(8, 10, 12), Visible = false, Parent = gui })
 new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = win })
 new("UIStroke", { Color = Color3.fromRGB(70, 80, 95), Thickness = 2, Parent = win })
 local titleBar = new("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(30, 34, 42), Parent = win })
 new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = titleBar })
-local title = new("TextLabel", { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -120, 1, 0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.fromRGB(220, 225, 235), TextXAlignment = Enum.TextXAlignment.Left, Text = "Console", Parent = titleBar })
+local title = new("TextLabel", { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -212, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.fromRGB(220, 225, 235), TextXAlignment = Enum.TextXAlignment.Left, Text = "Console", Parent = titleBar })
 local closeBtn = new("TextButton", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(100, 22), BackgroundColor3 = Color3.fromRGB(170, 50, 50), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), Text = "Fechar", Parent = titleBar })
 new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = closeBtn })
-local _ = title
--- no celular o console ocupa quase a tela toda
-UiFit.onResize(gui, function(small)
-	win.Size = if small then UDim2.fromScale(0.97, 0.95) else UDim2.fromScale(0.72, 0.7)
+-- botão que abre a wiki ao lado do console (a tecla J não serve: ela é digitada no console)
+local wikiBtn = new("TextButton", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -114, 0.5, 0), Size = UDim2.fromOffset(84, 22), BackgroundColor3 = Color3.fromRGB(30, 90, 130), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), Text = if UiFit.touch then "Wiki" else "Wiki (F1)", Parent = titleBar })
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = wikiBtn })
+
+-- Com a wiki aberta junto (atributo WikiAberta, posto pela tela da wiki), o console
+-- vai para a esquerda e a wiki fica na direita.
+local small = false
+local function layout()
+	local docked = gui:GetAttribute("WikiAberta") == true
+	if docked then
+		win.AnchorPoint = Vector2.new(0, 0.5)
+		win.Position = UDim2.fromScale(0.01, 0.5)
+		win.Size = if small then UDim2.fromScale(0.5, 0.95) else UDim2.fromScale(0.57, 0.86)
+	else
+		win.AnchorPoint = Vector2.new(0.5, 0.5)
+		win.Position = UDim2.fromScale(0.5, 0.5)
+		-- no celular o console ocupa quase a tela toda
+		win.Size = if small then UDim2.fromScale(0.97, 0.95) else UDim2.fromScale(0.72, 0.7)
+	end
+	wikiBtn.BackgroundColor3 = if docked then Color3.fromRGB(80, 190, 255) else Color3.fromRGB(30, 90, 130)
+end
+UiFit.onResize(gui, function(s)
+	small = s
+	layout()
 end)
+gui:GetAttributeChangedSignal("WikiAberta"):Connect(layout)
 
 local scroll = new("ScrollingFrame", {
 	Position = UDim2.fromOffset(10, 36),
@@ -126,9 +147,32 @@ local function clearOutput()
 	relayout()
 end
 
+-- página da wiki que combina com o que está aberto no console (a wiki abre nela)
+local function wikiContext(p: string)
+	local t = title.Text
+	local page
+	if string.find(p, "^%[admin@") then
+		page = "roteador"
+	elseif p ~= "" and string.find(p, "[#>]$") then
+		page = "olt"
+	elseif string.find(t, "RouterOS") then
+		page = "roteador"
+	elseif string.find(t, "MA5800") then
+		page = "olt"
+	elseif string.find(t, "Notebook") then
+		page = "notebook"
+	elseif string.find(t, "PC do NOC") then
+		page = "pcs-noc"
+	else
+		page = "sala-de-rack"
+	end
+	gui:SetAttribute("WikiPagina", page)
+end
+
 local function setPrompt(p: string)
 	currentPrompt = p
 	promptLabel.Text = p
+	wikiContext(p)
 	task.defer(function()
 		local w = promptLabel.AbsoluteSize.X
 		box.Position = UDim2.new(0, 8 + w + 4, 0, 0)
@@ -152,6 +196,7 @@ ConsoleOpen.OnClientEvent:Connect(function(data)
 	currentId = data.id
 	win.Visible = true
 	inputRow.Visible = data.id ~= 0
+	wikiContext(if data.id ~= 0 then data.prompt or "" else "")
 	if data.id == 0 then
 		-- manual e ficha: começa a leitura do topo
 		scroll.CanvasPosition = Vector2.zero
@@ -317,11 +362,40 @@ if UiFit.touch then
 	end)
 end
 
+local function toggleWiki()
+	-- no celular o teclado virtual cobre a wiki: solta a linha de comando
+	if UiFit.touch then
+		box:ReleaseFocus()
+	end
+	local w = playerGui:FindFirstChild("Wiki")
+	local ev = w and w:FindFirstChild("Alternar")
+	if ev then
+		(ev :: BindableEvent):Fire(gui:GetAttribute("WikiPagina"))
+	end
+end
+wikiBtn.Activated:Connect(toggleWiki)
+
+-- a wiki manda um comando (clique num bloco de código): vai para a linha do console,
+-- sem executar. O jogador confere, troca o que precisar e aperta Enter.
+local insertEv = new("BindableEvent", { Name = "Inserir", Parent = gui })
+insertEv.Event:Connect(function(cmd)
+	if typeof(cmd) ~= "string" or not win.Visible or not inputRow.Visible then
+		return
+	end
+	setBoxText((string.gsub(cmd, "[\r\n\t]", "")))
+	task.defer(function()
+		box:CaptureFocus()
+		box.CursorPosition = #box.Text + 1
+	end)
+end)
+
 UserInputService.InputBegan:Connect(function(input)
 	if not win.Visible then
 		return
 	end
-	if box:IsFocused() and input.KeyCode == Enum.KeyCode.Tab then
+	if input.KeyCode == Enum.KeyCode.F1 then
+		toggleWiki()
+	elseif box:IsFocused() and input.KeyCode == Enum.KeyCode.Tab then
 		task.spawn(doComplete)
 	elseif box:IsFocused() and input.KeyCode == Enum.KeyCode.Up and #history > 0 then
 		histIndex = math.max(1, histIndex - 1)

@@ -1,5 +1,7 @@
 -- Tela da wiki do provedor: índice por categoria, busca e páginas com o guia prático.
 -- Abre com a tecla J, pelo botão "Wiki" ou pelo quiosque da recepção.
+-- Com o console aberto, a wiki fica num painel à direita dele (botão Wiki ou F1 no
+-- console) e um clique num bloco de comando manda o comando para a linha do console.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -74,9 +76,10 @@ new("UISizeConstraint", { MaxSize = Vector2.new(1180, 820), Parent = win })
 
 local header = new("Frame", { Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = PANEL, Parent = win })
 corner(header, 12)
-new("TextLabel", {
+local headTitle = new("TextLabel", {
 	Position = UDim2.fromOffset(18, 0),
 	Size = UDim2.new(1, -150, 1, 0),
+	TextTruncate = Enum.TextTruncate.AtEnd,
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
 	TextSize = 20,
@@ -97,6 +100,20 @@ local closeBtn = new("TextButton", {
 	Parent = header,
 })
 corner(closeBtn, 6)
+-- painel ao lado do console: o índice vira um botão para caber a página
+local indexBtn = new("TextButton", {
+	AnchorPoint = Vector2.new(1, 0.5),
+	Position = UDim2.new(1, -96, 0.5, 0),
+	Size = UDim2.fromOffset(78, 30),
+	BackgroundColor3 = PANEL2,
+	Font = Enum.Font.GothamBold,
+	TextSize = 14,
+	TextColor3 = INK,
+	Text = "Índice",
+	Visible = false,
+	Parent = header,
+})
+corner(indexBtn, 6)
 
 -- índice (esquerda)
 local side = new("Frame", { Position = UDim2.fromOffset(12, 56), Size = UDim2.new(0, 250, 1, -68), BackgroundColor3 = PANEL, Parent = win })
@@ -173,18 +190,92 @@ contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	content.CanvasSize = UDim2.fromOffset(0, contentLayout.AbsoluteContentSize.Y + 24)
 end)
 
--- no celular a janela ocupa a tela quase toda e o índice fica mais estreito
-UiFit.onResize(gui, function(small)
+-- docked: a wiki está aberta junto com o console, num painel à direita
+local small = false
+local docked = false
+local showIndex = false -- no painel: mostrando o índice no lugar da página
+
+local function layout()
+	if docked then
+		win.AnchorPoint = Vector2.new(1, 0.5)
+		win.Position = UDim2.fromScale(0.99, 0.5)
+		win.Size = if small then UDim2.fromScale(0.47, 0.95) else UDim2.fromScale(0.41, 0.86)
+		-- botões à esquerda: no canto de cima à direita fica a lista de jogadores do Roblox
+		headTitle.Text = "Wiki"
+		headTitle.Size = UDim2.new(0, 60, 1, 0)
+		closeBtn.AnchorPoint = Vector2.new(0, 0.5)
+		closeBtn.Position = UDim2.new(0, 166, 0.5, 0)
+		closeBtn.Size = UDim2.fromOffset(78, 30)
+		closeBtn.Text = "Fechar"
+		indexBtn.AnchorPoint = Vector2.new(0, 0.5)
+		indexBtn.Position = UDim2.new(0, 80, 0.5, 0)
+		indexBtn.Visible = true
+		indexBtn.BackgroundColor3 = if showIndex then ACCENT else PANEL2
+		indexBtn.TextColor3 = if showIndex then BG else INK
+		side.Visible = showIndex
+		side.Size = UDim2.new(1, -24, 1, -68)
+		pageTitle.Visible = not showIndex
+		pageCat.Visible = not showIndex
+		content.Visible = not showIndex
+		pageTitle.Position = UDim2.fromOffset(16, 54)
+		pageTitle.Size = UDim2.new(1, -32, 0, 32)
+		pageTitle.TextSize = 20
+		pageCat.Position = UDim2.fromOffset(16, 84)
+		pageCat.Size = UDim2.new(1, -32, 0, 18)
+		content.Position = UDim2.fromOffset(10, 106)
+		content.Size = UDim2.new(1, -20, 1, -116)
+		return
+	end
+	-- no celular a janela ocupa a tela quase toda e o índice fica mais estreito
 	local sw = if small then 190 else 250
+	win.AnchorPoint = Vector2.new(0.5, 0.5)
+	win.Position = UDim2.fromScale(0.5, 0.5)
 	win.Size = if small then UDim2.fromScale(0.98, 0.96) else UDim2.fromScale(0.82, 0.82)
+	headTitle.Text = Wiki.Title
+	headTitle.Size = UDim2.new(1, -150, 1, 0)
+	closeBtn.AnchorPoint = Vector2.new(1, 0.5)
+	closeBtn.Position = UDim2.new(1, -10, 0.5, 0)
+	closeBtn.Size = UDim2.fromOffset(110, 30)
+	closeBtn.Text = if UiFit.touch then "Fechar" else "Fechar (J)"
+	indexBtn.Visible = false
+	side.Visible = true
+	pageTitle.Visible = true
+	pageCat.Visible = true
+	content.Visible = true
 	side.Size = UDim2.new(0, sw, 1, -68)
 	pageTitle.Position = UDim2.fromOffset(sw + 28, 58)
 	pageTitle.Size = UDim2.new(1, -(sw + 46), 0, 38)
+	pageTitle.TextSize = 26
 	pageCat.Position = UDim2.fromOffset(sw + 28, 94)
 	pageCat.Size = UDim2.new(1, -(sw + 46), 0, 18)
 	content.Position = UDim2.fromOffset(sw + 22, 120)
 	content.Size = UDim2.new(1, -(sw + 34), 1, -132)
+end
+
+UiFit.onResize(gui, function(s)
+	small = s
+	layout()
 end)
+
+indexBtn.MouseButton1Click:Connect(function()
+	showIndex = not showIndex
+	layout()
+end)
+
+-- linha de comando do console aberta? (aí os blocos de comando viram botões)
+local function consoleInput(): BindableEvent?
+	local console = playerGui:FindFirstChild("Console")
+	local term = console and console:FindFirstChild("Terminal")
+	if not term or not (term :: GuiObject).Visible then
+		return nil
+	end
+	for _, d in term:GetDescendants() do
+		if d:IsA("TextBox") and (d.Parent :: GuiObject).Visible then
+			return console:FindFirstChild("Inserir") :: BindableEvent?
+		end
+	end
+	return nil
+end
 
 -- ---------------------------------------------------------------------------
 -- Desenho de uma página
@@ -257,9 +348,47 @@ local function renderPage(page: any)
 		elseif head == "- " then
 			textLabel(content, "•  " .. string.sub(line, 3), { LayoutOrder = i })
 		elseif head == "$ " then
+			local cmd = string.sub(line, 3)
+			local canSend = docked and consoleInput() ~= nil
 			local b = box(i, Color3.fromRGB(6, 9, 12), 0)
-			pad(b, 10, 6, 10, 6)
-			textLabel(b, escapeCode(string.sub(line, 3)), { Font = Enum.Font.Code, TextSize = 15, TextColor3 = CODE })
+			pad(b, 10, 6, if canSend then 64 else 10, 6)
+			textLabel(b, escapeCode(cmd), { Font = Enum.Font.Code, TextSize = 15, TextColor3 = CODE })
+			if canSend then
+				-- com o console aberto: clicar manda o comando para a linha do console
+				local use = new("TextLabel", {
+					AnchorPoint = Vector2.new(1, 0.5),
+					Position = UDim2.new(1, 58, 0.5, 0),
+					Size = UDim2.fromOffset(50, 22),
+					BackgroundColor3 = PANEL2,
+					Font = Enum.Font.GothamBold,
+					TextSize = 12,
+					TextColor3 = CODE,
+					Text = "usar",
+					ZIndex = 2,
+					Parent = b,
+				})
+				corner(use, 5)
+				local hit = new("TextButton", {
+					-- cobre o bloco inteiro, inclusive as margens (o "usar" é mais alto que a linha)
+					Position = UDim2.new(0, -10, 0, -6),
+					Size = UDim2.new(1, 74, 1, 12),
+					BackgroundTransparency = 1,
+					Text = "",
+					ZIndex = 4,
+					Parent = b,
+				})
+				local function send()
+					local ev = consoleInput()
+					if ev then
+						ev:Fire(cmd)
+						use.Text = "ok"
+						task.delay(0.8, function()
+							use.Text = "usar"
+						end)
+					end
+				end
+				hit.MouseButton1Click:Connect(send)
+			end
 		elseif head == "> " then
 			local b = box(i, ACCENT, 0.85)
 			pad(b, 14, 8, 10, 8)
@@ -315,6 +444,10 @@ local function openPage(page: any)
 	current = page
 	renderPage(page)
 	highlight()
+	if showIndex then
+		showIndex = false
+		layout()
+	end
 end
 
 local function buildList()
@@ -395,8 +528,10 @@ search:GetPropertyChangedSignal("Text"):Connect(buildList)
 local function open(pageId: string?)
 	win.Visible = true
 	local page = (pageId and Wiki.byId(pageId)) or current or Wiki.Pages[1]
+	showIndex = false
 	buildList()
 	openPage(page)
+	layout()
 end
 
 local function close()
@@ -414,21 +549,55 @@ end
 
 openBtn.MouseButton1Click:Connect(toggle)
 
--- o botão fica escondido enquanto o console ou o terminal de compras estão abertos
--- (senão ele aparece por cima deles, principalmente no celular)
+-- o console pede (botão Wiki ou F1): abre já na página do equipamento em uso
+local toggleEv = new("BindableEvent", { Name = "Alternar", Parent = gui })
+toggleEv.Event:Connect(function(pageId)
+	if win.Visible then
+		close()
+	else
+		open(if typeof(pageId) == "string" then pageId else nil)
+	end
+end)
+
+-- Acompanha o console: com ele aberto, a wiki vira painel à direita e o console
+-- vai para a esquerda. O botão Wiki da tela some (o console tem o dele), e também
+-- some com o terminal de compras aberto, que ficaria por baixo.
+local lastCanSend = false
 task.spawn(function()
 	while true do
-		task.wait(0.25)
+		task.wait(0.2)
 		local console = playerGui:FindFirstChild("Console")
-		local covered = false
+		local term = console and console:FindFirstChild("Terminal") :: GuiObject?
+		local termOpen = term ~= nil and term.Visible
+		local covered = termOpen
 		if console then
 			for _, f in console:GetChildren() do
-				if f:IsA("Frame") and f.Visible and (f.Size.X.Scale > 0.5 or f.Size.X.Offset == 660) then
+				if f:IsA("Frame") and f.Visible and f.Size.X.Offset == 660 then
 					covered = true
 				end
 			end
 		end
 		openBtn.Visible = not covered
+		local d = termOpen and win.Visible
+		if console then
+			console:SetAttribute("WikiAberta", d)
+		end
+		local canSend = consoleInput() ~= nil
+		if d ~= docked or (d and canSend ~= lastCanSend) then
+			docked = d
+			if not d then
+				showIndex = false
+			end
+			layout()
+			if win.Visible and current then
+				local y = content.CanvasPosition.Y
+				renderPage(current)
+				task.defer(function()
+					content.CanvasPosition = Vector2.new(0, y)
+				end)
+			end
+		end
+		lastCanSend = canSend
 	end
 end)
 closeBtn.MouseButton1Click:Connect(close)

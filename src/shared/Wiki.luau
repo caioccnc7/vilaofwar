@@ -146,6 +146,13 @@ Wiki.Pages = {
 			"$ clear",
 			"- Limpa a tela. O botão <b>Fechar</b> sai do console.",
 			"",
+			"# Wiki junto com o console",
+			"- Com o console aberto, aperte <b>F1</b> ou o botão <b>Wiki</b> na barra do console. O console vai para a esquerda e a wiki abre num painel à direita, já na página do equipamento que você está usando (roteador, OLT, PC do NOC ou notebook).",
+			"- O botão <b>Índice</b> do painel mostra todas as páginas e a busca. Escolha uma página e o índice fecha sozinho.",
+			"- Clique num bloco de comando (ou no botão <b>usar</b> ao lado dele) e o comando vai para a linha do console. Ele não roda sozinho: confira, troque o que for preciso (IP, número da ONU, serial) e aperte <b>Enter</b>.",
+			"- Para voltar a digitar, clique na linha do console. <b>F1</b> de novo ou <b>Fechar</b> tira a wiki da tela.",
+			"> No celular, toque em <b>Wiki</b> na barra do console. As duas janelas dividem a tela.",
+			"",
 			"# No carro da equipe",
 			"- <b>E</b> perto da porta do motorista: entra dirigindo. Também dá para sentar no banco do carona.",
 			"- <b>W</b> acelera, <b>S</b> freia e dá ré, <b>A</b> e <b>D</b> viram.",
@@ -833,6 +840,7 @@ Wiki.Changelog = {
 	{
 		date = "10/11/2026",
 		items = {
+			"Wiki junto com o console: F1 ou o botão Wiki do console abre a wiki num painel ao lado, na página do equipamento em uso. Clique num comando da wiki para mandá-lo à linha do console.",
 			f("Mundo aberto: cada jogador chega com R$ %d e escolhe (tecla P) abrir o seu provedor ou entrar como sócio de outro, aportando o próprio dinheiro.", Config.StartMoney),
 			"Segundo prédio na cidade, igual ao primeiro. Até dois provedores por servidor, com caixa, rack, NOC, equipe e carro próprios. A rua é compartilhada (rede neutra).",
 			"Nome do provedor e preço da internet editáveis. Quem já é cliente mantém o preço do contrato até cancelar.",
