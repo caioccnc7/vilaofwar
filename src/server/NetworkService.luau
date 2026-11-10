@@ -621,6 +621,64 @@ local function describeSignal(dbm: number?): string
 	return string.format("%.1f dBm (%s)", dbm, quality)
 end
 
+-- Caixa da casa: um prompt só ("Opções", E) abre um menu na tela com o estado da
+-- casa e as ações por tecla, igual ao menu dos equipamentos do rack.
+-- Ações: medir sinal (E), trocar ONU (R), refazer conector (F), instalar internet (E).
+local HOUSE_MENU_RANGE = 16
+local houseViewers: { [Player]: any } = {} -- [player] = casa com o menu aberto
+local houseMenuKey: { [Player]: string } = {} -- último estado enviado, para não reenviar igual
+
+local function houseMenuData(h: any, player: Player): any
+	local P = Providers.of(player)
+	local index = h.house.index
+	local active = h.contract == "active"
+	local mine = active and P ~= nil and h.slot == P.slot
+	local rival = active and not mine
+	local sub
+	if mine then
+		sub = string.format("Sua cliente · R$ %d por dia · SN %s", h.price or 0, h.sn or "?")
+	elseif rival then
+		local other = Providers.slots[h.slot]
+		sub = "Cliente do " .. (if other then other.name else "concorrente")
+	else
+		local choice = h.choice and Providers.slots[h.choice]
+		if choice and P and h.choice == P.slot then
+			sub = string.format("Quer internet com você · R$ %d por dia", P.price)
+		elseif choice then
+			sub = string.format("Prefere o %s (R$ %d por dia)", choice.name, choice.price)
+		else
+			sub = string.format("Acha caro · paga no máximo R$ %d por dia", h.willing or 0)
+		end
+	end
+	local status = if mine then h.status else "nocontract"
+	return {
+		id = index,
+		label = "Casa " .. index,
+		sub = sub,
+		state = status,
+		stateText = if rival then "Cliente do concorrente" else (Config.StatusLabels[status] or status),
+		active = active,
+		mine = mine,
+		canInstall = not active and P ~= nil and h.choice == P.slot,
+		pos = h.house.box.Position,
+	}
+end
+
+local function pushHouseMenu(player: Player, h: any)
+	local data = houseMenuData(h, player)
+	local key = table.concat({ data.id, data.sub, data.state, data.stateText, tostring(data.active), tostring(data.mine), tostring(data.canInstall) }, "|")
+	if houseMenuKey[player] == key then
+		return
+	end
+	houseMenuKey[player] = key
+	Remotes.HouseMenu:FireClient(player, data)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+	houseViewers[player] = nil
+	houseMenuKey[player] = nil
+end)
+
 local function setupHousePrompts(h: any)
 	local box = h.house.box
 	local index = h.house.index
@@ -640,9 +698,7 @@ local function setupHousePrompts(h: any)
 		return P
 	end
 
-	local measure = prompt(box, "Medir sinal", label, 0.5, 14)
-	measure.KeyboardKeyCode = Enum.KeyCode.E
-	measure.Triggered:Connect(function(player)
+	local function doMeasure(player: Player)
 		if not holding(player, ToolNames.PowerMeter) then
 			return
 		end
@@ -660,11 +716,9 @@ local function setupHousePrompts(h: any)
 			text ..= " · a luz chega, mas a ONU não responde"
 		end
 		Remotes.notify(player, text, "measure")
-	end)
+	end
 
-	local swap = prompt(box, "Trocar ONU", label, 2, 14)
-	swap.KeyboardKeyCode = Enum.KeyCode.R
-	swap.Triggered:Connect(function(player)
+	local function doSwap(player: Player)
 		if h.contract ~= "active" then
 			return
 		end
@@ -684,11 +738,9 @@ local function setupHousePrompts(h: any)
 		if not wasBroken then
 			Remotes.notify(player, "A ONU antiga estava boa. O problema era outro.", "error")
 		end
-	end)
+	end
 
-	local reconnect = prompt(box, "Refazer conector", label, 3, 14)
-	reconnect.KeyboardKeyCode = Enum.KeyCode.F
-	reconnect.Triggered:Connect(function(player)
+	local function doReconnect(player: Player)
 		if h.contract ~= "active" or not holding(player, ToolNames.Fusion) then
 			return
 		end
@@ -706,11 +758,9 @@ local function setupHousePrompts(h: any)
 		else
 			Remotes.notify(player, "Conector refeito, mas o sinal não mudou.", "error")
 		end
-	end)
+	end
 
-	local install = prompt(box, "Instalar internet", label, 4, 14)
-	install.KeyboardKeyCode = Enum.KeyCode.E
-	install.Triggered:Connect(function(player)
+	local function doInstall(player: Player)
 		if h.contract == "active" or not holding(player, ToolNames.Fusion) then
 			return
 		end
@@ -739,17 +789,30 @@ local function setupHousePrompts(h: any)
 		if Net.onInstalled then
 			Net.onInstalled(index)
 		end
+	end
+
+	local menu = prompt(box, "Opções", label, 0, 14)
+	menu.KeyboardKeyCode = Enum.KeyCode.E
+	-- só o prompt da casa mais perto aparece
+	menu.Exclusivity = Enum.ProximityPromptExclusivity.OneGlobally
+	menu.Triggered:Connect(function(player)
+		houseViewers[player] = h
+		houseMenuKey[player] = nil
+		pushHouseMenu(player, h)
 	end)
 
-	h.prompts = { measure = measure, swap = swap, reconnect = reconnect, install = install }
+	h.prompts = { menu = menu }
+	h.actions = { measure = doMeasure, swap = doSwap, reconnect = doReconnect, install = doInstall }
 end
 
 local function refreshHousePrompts(h: any)
 	local active = h.contract == "active"
-	h.prompts.measure.Enabled = active
-	h.prompts.swap.Enabled = active
-	h.prompts.reconnect.Enabled = active
-	h.prompts.install.Enabled = not active
+	-- quem está com o menu desta casa aberto vê o estado novo
+	for player, viewing in houseViewers do
+		if viewing == h and player.Parent then
+			pushHouseMenu(player, h)
+		end
+	end
 	h.house.wantSign.Transparency = if active then 1 else 0
 	local gui = h.house.wantSign:FindFirstChildOfClass("SurfaceGui")
 	if gui then
@@ -765,6 +828,32 @@ local function refreshHousePrompts(h: any)
 	local post = h.house.model:FindFirstChild("WantSignPost")
 	if post then
 		post.Transparency = if active then 1 else 0
+	end
+end
+
+-- Ação escolhida no menu da caixa da casa (cliente -> servidor)
+local function onHouseAction(player: Player, index: any, action: any)
+	if typeof(index) ~= "number" or typeof(action) ~= "string" then
+		return
+	end
+	if action == "close" then
+		houseViewers[player] = nil
+		houseMenuKey[player] = nil
+		return
+	end
+	local h = Net.houses[index]
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not h or not h.actions or not root or (root.Position - h.house.box.Position).Magnitude > HOUSE_MENU_RANGE then
+		houseViewers[player] = nil
+		houseMenuKey[player] = nil
+		Remotes.HouseMenu:FireClient(player, nil)
+		return
+	end
+	local fn = h.actions[action]
+	if fn then
+		fn(player)
+		refreshHousePrompts(h)
 	end
 end
 
@@ -1097,6 +1186,7 @@ function Net.init(worldData: any, gameService: any)
 		refreshHousePrompts(h)
 	end
 	setupBoxPrompts()
+	Remotes.HouseAction.OnServerEvent:Connect(onHouseAction)
 
 	toolTemplates = {
 		PowerMeter = makeTool(ToolNames.PowerMeter, Color3.fromRGB(240, 200, 40), "Mede o sinal óptico em dBm"),

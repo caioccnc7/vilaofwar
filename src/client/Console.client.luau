@@ -7,6 +7,7 @@ local TextService = game:GetService("TextService")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local UiFit = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UiFit"))
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local ConsoleOpen = Remotes:WaitForChild("ConsoleOpen") :: RemoteEvent
 local ConsoleCommand = Remotes:WaitForChild("ConsoleCommand") :: RemoteFunction
 local ConsoleComplete = Remotes:WaitForChild("ConsoleComplete") :: RemoteFunction
@@ -649,8 +650,8 @@ new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = stateDot })
 local stateText = new("TextLabel", { Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -40, 1, 0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, Text = "", Parent = stateRow })
 
 type MenuButton = { frame: TextButton, chip: TextLabel, text: TextLabel, hint: TextLabel, enabled: boolean }
-local function menuButton(order: number, key: string): MenuButton
-	local b = new("TextButton", { LayoutOrder = order, Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = MENU_ROW, AutoButtonColor = true, Text = "", Parent = menu })
+local function menuButton(order: number, key: string, parent: Instance?): MenuButton
+	local b = new("TextButton", { LayoutOrder = order, Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = MENU_ROW, AutoButtonColor = true, ClipsDescendants = true, Text = "", Parent = parent or menu })
 	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = b })
 	local chip = new("TextLabel", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(32, 32), BackgroundColor3 = Color3.fromRGB(235, 240, 248), Font = Enum.Font.GothamBlack, TextSize = 16, TextColor3 = Color3.fromRGB(16, 20, 30), Text = key, Parent = b })
 	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = chip })
@@ -801,5 +802,210 @@ task.spawn(function()
 			end
 		end
 		task.wait(0.3)
+	end
+end)
+
+-- ---------------------------------------------------------------------------
+-- Menu da caixa da casa
+-- Um prompt só ("Opções", E) na caixa abre este painel, no mesmo estilo do menu
+-- do rack: estado da casa e as ações com suas teclas. Cada serviço leva alguns
+-- segundos (a barra enche no botão); afastar-se ou fechar cancela.
+-- ---------------------------------------------------------------------------
+
+local HouseMenu = Remotes:WaitForChild("HouseMenu") :: RemoteEvent
+local HouseAction = Remotes:WaitForChild("HouseAction") :: RemoteEvent
+local ToolNames = Config.ToolNames
+
+local hmenu = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -24, 0.5, 0), Size = UDim2.fromOffset(330, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = MENU_BG, Visible = false, Parent = gui })
+new("UICorner", { CornerRadius = UDim.new(0, 12), Parent = hmenu })
+new("UIStroke", { Color = MENU_ACCENT, Thickness = 2, Parent = hmenu })
+new("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), Parent = hmenu })
+new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = hmenu })
+UiFit.scale(hmenu, 360, 450, 10)
+
+local hTitle = new("TextLabel", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, TextSize = 22, TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, Text = "", Parent = hmenu })
+local hSub = new("TextLabel", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = MENU_QUIET, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = "", Parent = hmenu })
+local hStateRow = new("Frame", { LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = MENU_ROW, Parent = hmenu })
+new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = hStateRow })
+local hStateDot = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = MENU_QUIET, Parent = hStateRow })
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hStateDot })
+local hStateText = new("TextLabel", { Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -40, 1, 0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, Text = "", Parent = hStateRow })
+
+-- ações: tecla, tempo de serviço (s) e ferramenta que precisa estar na mão
+local HouseActs = {
+	measure = { key = "E", order = 10, time = 0.5, tool = ToolNames.PowerMeter },
+	install = { key = "E", order = 11, time = 4, tool = ToolNames.Fusion },
+	reconnect = { key = "F", order = 12, time = 3, tool = ToolNames.Fusion },
+	swap = { key = "R", order = 13, time = 2, tool = nil },
+}
+local hbtn: { [string]: MenuButton } = {}
+local hfill: { [string]: Frame } = {}
+for action, a in HouseActs do
+	local b = menuButton(a.order, a.key, hmenu)
+	hbtn[action] = b
+	local fill = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = MENU_ACCENT, BackgroundTransparency = 0.7, BorderSizePixel = 0, ZIndex = 0, Parent = b.frame })
+	hfill[action] = fill
+end
+new("TextLabel", { LayoutOrder = 20, Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = MENU_QUIET, Text = if UiFit.touch then "Toque no X ou afaste-se para fechar" else "Esc ou Q fecha · afaste-se para fechar", Parent = hmenu })
+local hX = UiFit.closeX(hTitle, function() end, 30)
+hX.Position = UDim2.new(1, 0, 0, -2)
+
+local houseData: any = nil
+local working: { action: string, t0: number, dur: number }? = nil
+
+local function holdingTool(name: string?): boolean
+	if not name then
+		return true
+	end
+	local char = player.Character
+	local t = char and char:FindFirstChild(name)
+	return t ~= nil and t:IsA("Tool")
+end
+
+local function renderHouse()
+	local d = houseData
+	if not d then
+		return
+	end
+	hTitle.Text = d.label
+	hSub.Text = d.sub
+	hStateDot.BackgroundColor3 = Config.StatusColors[d.state] or MENU_QUIET
+	hStateText.Text = d.stateText
+	local busy = working ~= nil
+	-- só aparecem as ações que fazem sentido para a casa
+	hbtn.measure.frame.Visible = d.active
+	hbtn.reconnect.frame.Visible = d.active
+	hbtn.swap.frame.Visible = d.active
+	hbtn.install.frame.Visible = not d.active
+	local function toolHint(a: any, okHint: string): (string, boolean)
+		if not holdingTool(a.tool) then
+			return "Equipe: " .. a.tool, false
+		end
+		return okHint, true
+	end
+	if d.active then
+		local h1, ok1 = toolHint(HouseActs.measure, "Sinal em dBm e SN da ONU")
+		setButton(hbtn.measure, "Medir sinal", h1, d.mine and ok1 and not busy)
+		local h2, ok2 = toolHint(HouseActs.reconnect, "Resolve sinal atenuado · gasta 1 conector")
+		setButton(hbtn.reconnect, "Refazer conector", h2, d.mine and ok2 and not busy)
+		setButton(hbtn.swap, "Trocar ONU", "Quando a ONU queimou · gasta 1 ONU", d.mine and not busy)
+		if not d.mine then
+			hbtn.measure.hint.Text = "Casa do concorrente"
+			hbtn.reconnect.hint.Text = "Casa do concorrente"
+			hbtn.swap.hint.Text = "Casa do concorrente"
+		end
+	else
+		local h4, ok4 = toolHint(HouseActs.install, "Liga o cliente · gasta 1 ONU e 1 fibra drop")
+		if ok4 and not d.canInstall then
+			h4 = "O morador ainda não quer o seu plano"
+		end
+		setButton(hbtn.install, "Instalar internet", h4, ok4 and d.canInstall and not busy)
+	end
+	if working then
+		local b = hbtn[working.action]
+		b.text.Text = b.text.Text .. "..."
+		b.hint.Text = "Trabalhando, fique perto da caixa"
+	end
+end
+
+local function stopWork()
+	if working then
+		hfill[working.action].Size = UDim2.new(0, 0, 1, 0)
+		working = nil
+	end
+end
+
+local function closeHouseMenu(tellServer: boolean)
+	if hmenu.Visible and tellServer and houseData then
+		HouseAction:FireServer(houseData.id, "close")
+	end
+	stopWork()
+	hmenu.Visible = false
+	houseData = nil
+	ProximityPromptService.Enabled = true
+end
+
+local function houseAct(action: string)
+	local d = houseData
+	local b = hbtn[action]
+	if not d or working or not b or not b.frame.Visible or not b.enabled then
+		return
+	end
+	working = { action = action, t0 = os.clock(), dur = HouseActs[action].time }
+	renderHouse()
+end
+
+for action, b in hbtn do
+	b.frame.MouseButton1Click:Connect(function()
+		houseAct(action)
+	end)
+end
+
+HouseMenu.OnClientEvent:Connect(function(data)
+	if not data then
+		closeHouseMenu(false)
+		return
+	end
+	if houseData and houseData.id ~= data.id then
+		stopWork()
+	end
+	houseData = data
+	renderHouse()
+	hmenu.Visible = true
+	-- com o menu aberto, a tecla E é do menu, não do prompt
+	ProximityPromptService.Enabled = false
+end)
+
+hX.Activated:Connect(function()
+	closeHouseMenu(true)
+end)
+
+local HouseKeys = { [Enum.KeyCode.R] = "swap", [Enum.KeyCode.F] = "reconnect" }
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not hmenu.Visible or processed or UserInputService:GetFocusedTextBox() then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.Backspace then
+		closeHouseMenu(true)
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.E then
+		houseAct(if houseData and houseData.active then "measure" else "install")
+		return
+	end
+	local action = HouseKeys[input.KeyCode]
+	if action then
+		houseAct(action)
+	end
+end)
+
+-- barra de serviço, troca de ferramenta e distância
+local lastTool: Instance? = nil
+RunService.Heartbeat:Connect(function()
+	if not hmenu.Visible or not houseData then
+		return
+	end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root or (root.Position - houseData.pos).Magnitude > 16 then
+		closeHouseMenu(true)
+		return
+	end
+	local tool = char and char:FindFirstChildOfClass("Tool")
+	if tool ~= lastTool then
+		lastTool = tool
+		if not working then
+			renderHouse()
+		end
+	end
+	if working then
+		local k = math.clamp((os.clock() - working.t0) / working.dur, 0, 1)
+		hfill[working.action].Size = UDim2.new(k, 0, 1, 0)
+		if k >= 1 then
+			local action = working.action
+			stopWork()
+			HouseAction:FireServer(houseData.id, action)
+			renderHouse()
+		end
 	end
 end)

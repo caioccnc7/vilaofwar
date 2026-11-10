@@ -4,6 +4,7 @@ Tudo o que entrou no jogo, do mais novo para o mais antigo. É o mesmo conteúdo
 
 ## 10/11/2026
 
+- Caixa da casa organizada: um aviso só (Opções, E) abre um painel com o estado da casa e as ações por tecla: medir sinal (E), refazer conector (F), trocar ONU (R) ou instalar internet (E). Os avisos não ficam mais um em cima do outro.
 - Wiki junto com o console: F1 ou o botão Wiki do console abre a wiki num painel ao lado, na página do equipamento em uso. Clique num comando da wiki para mandá-lo à linha do console.
 - Mundo aberto: cada jogador chega com R$ 12000 e escolhe (tecla P) abrir o seu provedor ou entrar como sócio de outro, aportando o próprio dinheiro.
 - Segundo prédio na cidade, igual ao primeiro. Até dois provedores por servidor, com caixa, rack, NOC, equipe e carro próprios. A rua é compartilhada (rede neutra).

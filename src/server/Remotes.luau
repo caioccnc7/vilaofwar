@@ -33,6 +33,8 @@ Remotes.ShopOpen = event("ShopOpen") -- servidor -> cliente: abre a loja
 Remotes.ShopBuy = event("ShopBuy") -- cliente -> servidor: compra um item
 Remotes.RackMenu = event("RackMenu") -- servidor -> cliente: abre/atualiza o menu de ações de um equipamento (nil fecha)
 Remotes.RackAction = event("RackAction") -- cliente -> servidor: ação escolhida no menu do equipamento
+Remotes.HouseMenu = event("HouseMenu") -- servidor -> cliente: abre/atualiza o menu da caixa da casa (nil fecha)
+Remotes.HouseAction = event("HouseAction") -- cliente -> servidor: ação escolhida no menu da caixa da casa
 
 local fn = folder:FindFirstChild("ConsoleCommand")
 if not fn then
