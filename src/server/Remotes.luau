@@ -1,0 +1,61 @@
+-- Cria os RemoteEvents usados entre servidor e clientes.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Remotes = {}
+
+local folder = ReplicatedStorage:FindFirstChild("Remotes")
+if not folder then
+	folder = Instance.new("Folder")
+	folder.Name = "Remotes"
+	folder.Parent = ReplicatedStorage
+end
+
+local function event(name: string): RemoteEvent
+	local e = folder:FindFirstChild(name)
+	if not e then
+		e = Instance.new("RemoteEvent")
+		e.Name = name
+		e.Parent = folder
+	end
+	return e :: RemoteEvent
+end
+
+Remotes.NocUpdate = event("NocUpdate") -- servidor -> clientes: estado da rede a cada segundo
+Remotes.Notify = event("Notify") -- servidor -> cliente: aviso curto no HUD
+Remotes.Dialog = event("Dialog") -- servidor -> cliente: caixa de diálogo de um morador
+Remotes.DaySummary = event("DaySummary") -- servidor -> clientes: fechamento do dia
+Remotes.Bankrupt = event("Bankrupt") -- servidor -> clientes: o provedor faliu (fim de jogo)
+Remotes.ProviderAction = event("ProviderAction") -- cliente -> servidor: abrir, entrar, aportar, renomear, preço
+Remotes.ProviderMenu = event("ProviderMenu") -- servidor -> cliente: abre o menu de provedores
+Remotes.ConsoleOpen = event("ConsoleOpen") -- servidor -> cliente: abre o console de um equipamento
+Remotes.ShopOpen = event("ShopOpen") -- servidor -> cliente: abre a loja
+Remotes.ShopBuy = event("ShopBuy") -- cliente -> servidor: compra um item
+Remotes.RackMenu = event("RackMenu") -- servidor -> cliente: abre/atualiza o menu de ações de um equipamento (nil fecha)
+Remotes.RackAction = event("RackAction") -- cliente -> servidor: ação escolhida no menu do equipamento
+
+local fn = folder:FindFirstChild("ConsoleCommand")
+if not fn then
+	fn = Instance.new("RemoteFunction")
+	fn.Name = "ConsoleCommand"
+	fn.Parent = folder
+end
+Remotes.ConsoleCommand = fn :: RemoteFunction -- cliente -> servidor: uma linha digitada no console
+
+local comp = folder:FindFirstChild("ConsoleComplete")
+if not comp then
+	comp = Instance.new("RemoteFunction")
+	comp.Name = "ConsoleComplete"
+	comp.Parent = folder
+end
+Remotes.ConsoleComplete = comp :: RemoteFunction -- cliente -> servidor: TAB no console (completa a linha)
+
+function Remotes.notify(player: Player?, text: string, kind: string?)
+	if player then
+		Remotes.Notify:FireClient(player, text, kind or "info")
+	else
+		Remotes.Notify:FireAllClients(text, kind or "info")
+	end
+end
+
+return Remotes

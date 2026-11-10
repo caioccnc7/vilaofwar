@@ -1,0 +1,12 @@
+# gerados pelas ferramentas
+modelos/
+*.rbxlx
+*.rbxl
+*.rbxlx.lock
+__pycache__/
+*.pyc
+
+# sistema
+.DS_Store
+Thumbs.db
+desktop.ini
