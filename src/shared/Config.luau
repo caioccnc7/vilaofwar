@@ -131,6 +131,11 @@ Config.Onu = {
 	MinAgeDays = 5,
 }
 
+-- Roteador e OLT: só podem queimar depois de alguns dias no rack (conta do dia em que foram instalados)
+Config.Equip = {
+	MinAgeDays = 5,
+}
+
 -- Carro da equipe: comprado uma vez no terminal de compras (aba Equipe).
 -- O chefe dirige quando quiser; o técnico só usa se o carro estiver na garagem.
 Config.Car = {

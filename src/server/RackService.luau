@@ -108,11 +108,11 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 		"ONU NOVA NA OLT",
 		"  enable",
 		"  config",
-		"  display ont autofind all",
+		"  display ont autofind all        (anote o Ont SN e a porta: F/S/P 0/1/<porta>)",
 		"  interface gpon 0/1",
-		"  ont add 0 sn-auth <SN> omci ont-lineprofile-id 10 ont-srvprofile-id 10 desc \"casa1\"",
-		"  quit",
-		"  service-port vlan 100 gpon 0/1/0 ont <ID> gemport 1 multi-service user-vlan 100 tag-transform translate",
+		"  ont add <porta> sn-auth <SN> omci ont-lineprofile-id 10 ont-srvprofile-id 10 desc \"casa1\"",
+		"  quit                            (a OLT respondeu o ONTID no comando acima)",
+		"  service-port vlan 100 gpon 0/1/<porta> ont <ONTID> gemport 1 multi-service user-vlan 100 tag-transform translate",
 		"",
 		"ONU TROCADA: interface gpon 0/1  ->  ont modify <porta> <ID> sn <SN-novo>",
 	}, "\n")
@@ -486,6 +486,7 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 			powered = production,
 			cabled = production,
 			failed = false,
+			day = if game_ then game_.day else 1, -- dia em que entrou no rack: só pode queimar depois de Config.Equip.MinAgeDays
 			bootUntil = if production then os.clock() - 3600 * 3 else 0,
 			cfg = if kind == "router" then (if production then RouterCli.productionConfig() else RouterCli.factoryConfig()) else OltCli.factoryConfig(),
 		}
@@ -572,6 +573,36 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 		return list
 	end
 
+	-- autofind vazio: o motivo mais provável, em português, para o jogador não ficar no escuro
+	local function autofindWhy(olt: any, port: number?): string
+		local installed, registered, dark = 0, 0, {}
+		for index, h in net.houses do
+			if h.contract == "active" and h.slot == P.slot and h.onuId and h.sn then
+				local p = net.ponPortOf(h)
+				if port == nil or port == p then
+					installed += 1
+					if OltCli.findOnt(olt.cfg, p, h.sn) then
+						registered += 1
+					else
+						table.insert(dark, index)
+					end
+				end
+			end
+		end
+		if installed == 0 then
+			return "  Nenhuma casa foi instalada ainda" .. (if port then " nessa porta" else "") .. ". A ONU só aparece aqui depois de instalada na caixa da casa:\n  o morador pede no balcão (OS de instalação no ERP) e a instalação gasta 1 ONU e 1 fibra drop do estoque."
+		end
+		if #dark == 0 then
+			return string.format("  As %d ONUs instaladas já estão cadastradas. Veja com: display ont info 0 1 <porta> all", registered)
+		end
+		table.sort(dark)
+		local names = {}
+		for _, i in dark do
+			table.insert(names, tostring(i))
+		end
+		return "  Casa " .. table.concat(names, ", ") .. ": ONU instalada, mas a luz da OLT não chega nela.\n  Confira os cabos da OLT no rack (fibras amarelas no DIO) e a fibra da rua até a casa (Power Meter na caixa)."
+	end
+
 	local function gameDate(): string
 		return string.format("2026-11-%02d", math.clamp(game_.day, 1, 30))
 	end
@@ -628,10 +659,16 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 			autofind = function(port)
 				return autofind(dev, port)
 			end,
+			autofindWhy = function(port)
+				return autofindWhy(dev, port)
+			end,
 			ontState = ontState,
 			uptime = uptime(dev),
 		})
 	end
+
+	-- usado pelos atalhos de teste (FibraTeste "olt")
+	Rack.runLine = runLine
 
 	local function promptOf(dev: any, session: any): string
 		if dev.kind == "router" then
@@ -1595,14 +1632,24 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 		Rack.deadDns[RouterCli.Upstream.upstreamDns] = true
 	end
 
+	-- Roteador e OLT só queimam depois de Config.Equip.MinAgeDays dias no rack
+	local function oldEnough(dev: any): boolean
+		return game_.day - (dev.day or game_.day) >= Config.Equip.MinAgeDays
+	end
+
 	function Rack.canFailHardware(): boolean
-		return game_.day >= 2 and (activeOf("router") ~= nil or activeOf("olt") ~= nil)
+		for _, d in Rack.devices do
+			if isActive(d) and oldEnough(d) then
+				return true
+			end
+		end
+		return false
 	end
 
 	function Rack.failHardware()
 		local options = {}
 		for _, d in Rack.devices do
-			if isActive(d) then
+			if isActive(d) and oldEnough(d) then
 				table.insert(options, d)
 			end
 		end

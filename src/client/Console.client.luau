@@ -134,7 +134,39 @@ local function relayout()
 end
 scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayout)
 
+-- O que a OLT mostrou por último (SN e porta do autofind, porta e ONTID do ont add).
+-- Os botões "usar" da wiki trocam <SN>, <PORTA> e <ONTID> por esses valores.
+local seen = { sn = nil :: string?, port = nil :: string?, ontPort = nil :: string?, ontId = nil :: string? }
+
+local function remember(text: string)
+	local sn = string.match(text, "Ont SN%s*:%s*(%w+)")
+	if sn then
+		seen.sn = sn
+		seen.port = string.match(text, "F/S/P%s*:%s*0/1/(%d+)") or seen.port
+	end
+	local p, id = string.match(text, "PortID%s*:(%d+),%s*ONTID%s*:(%d+)")
+	if p then
+		seen.ontPort, seen.ontId = p, id
+	end
+end
+
+local function fillPlaceholders(cmd: string): string
+	if seen.sn then
+		cmd = string.gsub(cmd, "<SN>", seen.sn)
+	end
+	-- no service-port vale a porta em que a ONT foi cadastrada; no resto, a do autofind
+	local port = if string.find(cmd, "^service%-port") then (seen.ontPort or seen.port) else (seen.port or seen.ontPort)
+	if port then
+		cmd = string.gsub(cmd, "<PORTA>", port)
+	end
+	if seen.ontId then
+		cmd = string.gsub(cmd, "<ONTID>", seen.ontId)
+	end
+	return cmd
+end
+
 local function append(text: string)
+	remember(text)
 	local t = output.Text .. text
 	if #t > MAX_CHARS then
 		t = string.sub(t, #t - MAX_CHARS)
@@ -192,6 +224,7 @@ closeBtn.MouseButton1Click:Connect(close)
 
 ConsoleOpen.OnClientEvent:Connect(function(data)
 	title.Text = data.title
+	seen.sn, seen.port, seen.ontPort, seen.ontId = nil, nil, nil, nil
 	clearOutput()
 	append(data.banner .. "\n")
 	currentId = data.id
@@ -383,7 +416,13 @@ insertEv.Event:Connect(function(cmd)
 	if typeof(cmd) ~= "string" or not win.Visible or not inputRow.Visible then
 		return
 	end
-	setBoxText((string.gsub(cmd, "[\r\n\t]", "")))
+	local filled = fillPlaceholders((string.gsub(cmd, "[\r\n\t]", "")))
+	setBoxText(filled)
+	-- sobrou <SN>, <PORTA> ou <ONTID>: ainda não apareceu no console de onde tirar o valor
+	local missing = string.match(filled, "<[%u]+>")
+	if missing then
+		append("  (wiki) Troque " .. missing .. " pelo valor real antes do Enter. " .. (if missing == "<ONTID>" then "O ONTID aparece na resposta do ont add." else "Ele aparece em: display ont autofind all") .. "\n")
+	end
 	task.defer(function()
 		box:CaptureFocus()
 		box.CursorPosition = #box.Text + 1

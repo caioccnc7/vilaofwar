@@ -55,6 +55,7 @@ Estas regras foram combinadas com o Caio (dono do projeto). Os números ficam em
 - Se o morador escolher outro provedor (preço), a OS é cancelada e ele pede no outro.
 - O cliente sem internet há 45 s liga para o provedor: vira uma **OS de reparo**. Ela fecha sozinha quando a internet volta.
 - Uma ONU só queima depois de **5 dias de jogo** de uso, contados da instalação ou da última troca (`Config.Onu.MinAgeDays`).
+- Roteador e OLT só queimam depois de **5 dias de jogo** no rack, contados do dia em que foram instalados (`Config.Equip.MinAgeDays`).
 - O cliente só cancela depois de **1 dia inteiro** de expediente sem internet (12 horas de jogo seguidas).
 - Cada cliente paga, por dia, o preço do contrato dele. A instalação rende R$ 100.
 - Há multa de SLA de R$ 5 por cliente por hora sem internet.

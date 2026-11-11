@@ -2,6 +2,13 @@
 
 Tudo o que entrou no jogo, do mais novo para o mais antigo. É o mesmo conteúdo da página **Novidades** da wiki do jogo (`src/shared/Wiki.luau`).
 
+## 10/11/2026 · OLT passo a passo
+
+- Página da OLT refeita como passo a passo numerado, do autofind até o cliente navegando, com uma lista de erros comuns e o que fazer em cada um.
+- Botões usar da wiki preenchem o SN, a porta e o ONTID reais que apareceram no console (antes vinha um SN de exemplo).
+- OLT mais clara: autofind vazio diz o motivo, o ont add recusa SN de exemplo, avisa quando o SN não é de nenhuma casa e mostra o service-port pronto para o próximo passo. Consultas gerais (service-port, current-configuration, by-sn) também valem dentro da placa GPON.
+- Roteador e OLT só queimam depois de 5 dias no rack (antes podia acontecer no dia 2).
+
 ## 10/11/2026 · cidade ampliada
 
 - Cidade muito maior, ocupando todo o terreno: Avenida Central, Avenida Sul, Rua da Serra e Rua do Rio, parque com lago, campo de futebol e a Praça da Chegada, onde todo mundo nasce.

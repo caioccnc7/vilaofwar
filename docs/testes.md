@@ -54,7 +54,7 @@ F:Invoke("ir", 25)               -- leva o 1º jogador até a casa (ou prédio p
 3. Caixa de uma casa sem OS: o botão Instalar fica bloqueado com o aviso do ERP. Na casa com OS, instale: a OS vira "concluída".
 4. `tecnico` e `atendente`: a atendente aparece atrás do balcão, agenda as OS pendentes e o técnico vai instalar sozinho (fila dele na aba Equipe).
 5. `romper DIST_A` com clientes na CTO A: depois de 45 s as casas ligam (OS de reparo), o técnico emenda e as outras OS fecham sozinhas.
-6. `incidente onu` logo após instalar não faz nada. `envelhecer 5` e `incidente onu` queima uma ONU.
+6. `incidente onu` logo após instalar não faz nada. `envelhecer 5` e `incidente onu` queima uma ONU. O mesmo vale para `incidente hw` (roteador e OLT).
 7. Aba Receitas e despesas: compras, instalações e (depois de `hora 19.9`) mensalidades, link e salários. Aba Estoque: movimentação com a OS de cada uso.
 
 ## Roteiro da OLT e da ativação pelo ERP

@@ -154,7 +154,9 @@ end
 local function autofindTable(env: any, port: number?): string
 	local list = env.autofind(port)
 	if #list == 0 then
-		return "  Failure: The automatically found ONTs do not exist"
+		-- lista vazia: além da resposta do equipamento, diz o motivo mais provável
+		local why = env.autofindWhy and env.autofindWhy(port)
+		return "  Failure: The automatically found ONTs do not exist" .. (if why and why ~= "" then "\n" .. why else "")
 	end
 	local out = {}
 	for i, a in list do
@@ -169,6 +171,9 @@ local function autofindTable(env: any, port: number?): string
 	table.insert(out, DASH)
 	table.insert(out, "  The number of GPON autofind ONT is " .. #list)
 	table.insert(out, DASH)
+	local a = list[1]
+	table.insert(out, "  Para autorizar a primeira da lista (dentro de interface gpon 0/1):")
+	table.insert(out, string.format("  ont add %d sn-auth %s omci ont-lineprofile-id %d ont-srvprofile-id %d", a.port, a.sn, OltCli.LineProfile, OltCli.SrvProfile))
 	return table.concat(out, "\n")
 end
 
@@ -227,12 +232,15 @@ local function servicePortCmd(cfg: any, tokens: { string }): string
 		return "  Failure: The VLAN does not exist"
 	end
 	if not (cfg.onts[port] and cfg.onts[port][ont]) then
-		return "  Failure: The ONT does not exist"
+		return string.format("  Failure: The ONT does not exist\n  Não existe ONT %d cadastrada na porta %d. Faça antes o ont add (dentro de interface gpon 0/1)\n  e use aqui a porta e o ONTID que ele responder. Para ver as cadastradas: display ont info 0 1 %d all", ont, port, port)
 	end
 	for _, sp in cfg.servicePorts do
 		if idx ~= nil and sp.index == idx then
 			return "  Failure: The service virtual port index has existed"
 		end
+	end
+	if OltCli.hasService(cfg, port :: number, ont :: number) then
+		return "  Failure: Service virtual port has existed already"
 	end
 	OltCli.addServicePort(cfg, idx, vlan :: number, port :: number, ont :: number, gem :: number, uvlan :: number)
 	return ""
@@ -345,10 +353,13 @@ Tree.config = {
 Tree.gpon = {
 	kw = {
 		K("display", "Display information", displayNode({
+			K("current-configuration", "Display current configuration"),
+			K("service-port", "Service virtual port", { kw = { K("all", "All service virtual ports") }, arg = A("<index>", "INTEGER<0-65534> Index", nil, { num = true }) }),
 			K("ont", "ONT information", {
 				kw = {
 					K("autofind", "Display the automatically found ONTs", { kw = { K("all", "All ports") }, arg = A("<portid>", "INTEGER<0-7> Port ID", nil, { num = true }) }),
 					K("info", "Display ONT information", {
+						kw = { K("by-sn", "Query by SN", { arg = A("<sn>", "STRING<12-16> ONT serial number") }) },
 						arg = A("<portid>", "INTEGER<0-7> Port ID", { kw = { K("all", "All ONTs") }, arg = A("<ontid>", "INTEGER<0-127> ONT ID", nil, { num = true }) }, { num = true }),
 					}),
 					K("optical-info", "Display ONT optical information", {
@@ -745,7 +756,10 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 	end
 
 	if mode == "gpon" then
-		if cmd == "display" and tokens[2] == "ont" and tokens[3] == "autofind" then
+		-- consultas gerais também valem dentro da placa
+		if cmd == "display" and (tokens[2] == "service-port" or tokens[2] == "current-configuration" or (tokens[2] == "ont" and tokens[3] == "info" and tokens[4] == "by-sn")) then
+			return configDisplay(cfg, tokens, line, env) or err(tokens, 1)
+		elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "autofind" then
 			return autofindTable(env, tonumber(tokens[4] or ""))
 		elseif cmd == "display" and tokens[2] == "ont" and tokens[3] == "info" then
 			local port = tonumber(tokens[4] or "")
@@ -775,6 +789,10 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 			end
 			local explicitId = if si == 5 then tonumber(tokens[4]) else nil
 			local sn = string.upper(tokens[si + 1])
+			-- "<SN>" ou "HWTCXXXXXXXX" copiado do manual: não é um número de série de verdade
+			if not string.match(sn, "^%w+$") or #sn < 12 or #sn > 16 or string.find(sn, "XXXX", 1, true) then
+				return "  % Parameter error: \"" .. tokens[si + 1] .. "\" não é um número de série.\n  Use o SN real da ONU, que aparece em: display ont autofind all (linha Ont SN)"
+			end
 			if not find(tokens, "omci") then
 				return "  % Incomplete command (faltou: omci ont-lineprofile-id 10 ont-srvprofile-id 10)"
 			end
@@ -798,11 +816,22 @@ function runInner(cfg: any, session: any, line: string, env: any): string
 			end
 			local di = find(tokens, "desc")
 			local desc = if di then (tokens[di + 1] or "") else ""
+			-- SN que nenhuma ONU instalada tem: a OLT aceita (pré-cadastro), mas a casa não sobe
+			local found = false
+			for _, a in env.autofind(port) do
+				if a.sn == sn then
+					found = true
+				end
+			end
 			local id = OltCli.addOnt(cfg, port, explicitId, sn, desc)
 			if not id then
 				return "  Failure: The ONT ID has already existed"
 			end
-			return string.format("  Number of ONTs that can be added: 1, success: 1\n  PortID :%d, ONTID :%d", port, id)
+			local out = string.format("  Number of ONTs that can be added: 1, success: 1\n  PortID :%d, ONTID :%d", port, id)
+			if not found then
+				out ..= string.format("\n  Aviso: nenhuma ONU com o SN %s está ligada na porta %d agora. Confira o SN e a porta em display ont autofind all.\n  Se errou, apague com: ont delete %d %d", sn, port, port, id)
+			end
+			return out .. string.format("\n  Falta o serviço. Digite quit e depois:\n  service-port vlan %d gpon 0/1/%d ont %d gemport %d multi-service user-vlan %d tag-transform translate", OltCli.Vlan, port, id, OltCli.Gemport, OltCli.Vlan)
 		elseif cmd == "ont" and tokens[2] == "delete" then
 			local port, id = tonumber(tokens[3] or ""), tonumber(tokens[4] or "")
 			if not (port and id and cfg.onts[port] and cfg.onts[port][id]) then

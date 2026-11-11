@@ -105,7 +105,7 @@ Providers.start(world)
 --   game.ServerStorage.FibraTeste:Invoke("atendente")          contrata a atendente de graça
 --   game.ServerStorage.FibraTeste:Invoke("pedido", 3)          o morador da casa 3 pede instalação (OS)
 --   game.ServerStorage.FibraTeste:Invoke("os")                 resumo das OS do ERP
---   game.ServerStorage.FibraTeste:Invoke("envelhecer", 5)      ONUs ficam 5 dias mais velhas (podem queimar)
+--   game.ServerStorage.FibraTeste:Invoke("envelhecer", 5)      ONUs, roteador e OLT ficam 5 dias mais velhos (podem queimar)
 --   game.ServerStorage.FibraTeste:Invoke("rack")               roteador configurado + OLT de fábrica no rack, link contratado
 --   game.ServerStorage.FibraTeste:Invoke("instalar", 3)        instala a casa 3 na hora (gasta ONU e drop)
 --   game.ServerStorage.FibraTeste:Invoke("olt", "display service-port all")   roda uma linha no console da OLT
@@ -294,15 +294,8 @@ Debug = {
 		end
 		dev.testSession = dev.testSession or { mode = "user" }
 		local before = OltCli.prompt(dev.cfg, dev.testSession)
-		local out = OltCli.run(dev.cfg, dev.testSession, line, {
-			autofind = function()
-				return {}
-			end,
-			ontState = function()
-				return { run = "offline" }
-			end,
-			uptime = "0h",
-		})
+		-- mesmo caminho do console de verdade (autofind, sinal das ONUs e avisos)
+		local out = P.rack.runLine(dev, dev.testSession, line)
 		return before .. line .. "\n" .. out
 	end,
 	ativar = function(index: number)
@@ -337,6 +330,14 @@ Debug = {
 		for _, h in Net.houses do
 			if h.onuId then
 				h.onuDay = (h.onuDay or Game.day) - (days or Config.Onu.MinAgeDays)
+			end
+		end
+		-- roteador e OLT também ficam mais velhos (podem queimar)
+		for _, P in Providers.list() do
+			if P.rack then
+				for _, d in P.rack.devices do
+					d.day = (d.day or Game.day) - (days or Config.Equip.MinAgeDays)
+				end
 			end
 		end
 	end,
