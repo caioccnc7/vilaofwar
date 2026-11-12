@@ -2,6 +2,17 @@
 
 Tudo o que entrou no jogo, do mais novo para o mais antigo. É o mesmo conteúdo da página **Novidades** da wiki do jogo (`src/shared/Wiki.luau`).
 
+## 12/11/2026 · guerra dos provedores
+
+- Ataque DDoS entre provedores (tecla K ou botão Guerra): o dono usa os clientes online como bots. Dois tipos: SYN flood (derruba o roteador) e volumétrico com amplificação DNS (entope o link).
+- Ataque de 1 a 8 horas de jogo. Provedor no prazo de implantação não ataca nem é atacado. Os bots de quem ataca ficam lentos, a botnet entra em recarga e a vítima fica protegida por um tempo.
+- Defesa com comandos reais do RouterOS: `/tool torch`, `/ip firewall filter`, `raw` e `address-list`, `/ip firewall connection print`, `/ip settings set tcp-syncookies=yes`. Regra mal escrita derruba o DNS dos clientes, como na vida real.
+- Operadora: anti-DDoS pago por dia e blackhole (RTBH) grátis, que para o ataque mas derruba o seu IP por um tempo.
+- Rastreio e denúncia: `whois` no PC do NOC ou relatório da operadora mostram a origem. Com a prova, o balcão de ocorrências da Delegacia multa o atacante e tira reputação.
+- Equipamentos de guerra no jogo: firewall e scrubbing para defesa, servidor C2 e amplificador para ataque.
+- Loja com Robux: pacotes de dinheiro do jogo para a partida e Passe VIP só visual (fachada dourada e uniforme).
+- Moradores comentam quando o provedor está sob ataque.
+
 ## 10/11/2026 · OLT passo a passo
 
 - Página da OLT refeita como passo a passo numerado, do autofind até o cliente navegando, com uma lista de erros comuns e o que fazer em cada um.

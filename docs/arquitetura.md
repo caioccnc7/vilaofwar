@@ -25,6 +25,7 @@ Convenção de nomes:
 3. `Providers.start(world)` passa a ouvir a entrada e a saída de jogadores e o menu Provedor.
 4. Laço de 1 segundo:
    - `rack.apply()` de cada provedor aplica a configuração dos equipamentos ao grafo.
+   - `Ddos.tick()` calcula o efeito de cada ataque DDoS e grava em `Net.ddos[slot]` (nível e tráfego extra).
    - `Net.tick()` propaga o sinal e calcula tráfego, alarmes e a escolha dos moradores.
    - `Residents.tick()` atualiza humor, falas e cancelamentos.
    - `Director.tick()` sorteia incidentes.
@@ -39,6 +40,8 @@ Convenção de nomes:
 | `WorldBuilder` (mapa) | `Game.newProvider(P)`: caixa, estoque, crédito, SLA, fase |
 | `NetworkService` (rua, casas, grafo) | `RackModule.new(P, world, net)`: rack, loja, ficha do link, PCs do NOC |
 | `ResidentService` (moradores) | `ErpModule.new(P, world, net)`: ordens de serviço, atendente, computador da recepção, tela do ERP |
+| `DdosService` (ataques DDoS) | `P.sec`: equipamentos de guerra, anti-DDoS, recarga, proteção e blackhole (criado pelo `DdosService`) |
+| `LojaRobux` (Developer Products e Passe VIP) | |
 | | `TechModule.new(P, world, net)`: técnicos pela fila do ERP (cria o `CarModule.new`) |
 | `IncidentDirector` | |
 | `GameService` (relógio da cidade) | |
@@ -91,6 +94,7 @@ Os Remotes do console, da loja e do rack são únicos para o jogo inteiro. `Rack
 | `ConsoleOpen`, `ConsoleCommand`, `ConsoleComplete` | ambos | consoles (linha digitada e TAB) |
 | `WikiOpen` | servidor → cliente | quiosque da wiki |
 | `ErpOpen` / `ErpAction` | ambos | tela do ERP (abrir, agendar, cancelar, abrir OS, comprar, contratar) |
+| `GuerraState` (RemoteFunction) / `GuerraAction` | ambos | tela Guerra: dados de ataque, defesa e loja; atacar, parar, comprar equipamento, anti-DDoS, RTBH, Robux |
 
 ## Onde mexer
 
@@ -107,6 +111,17 @@ Os Remotes do console, da loja e do rack são únicos para o jogo inteiro. `Rack
 | `server/ResidentService.luau` | Moradores: humor, falas, visitas e manifestação |
 | `server/TechService.luau` / `CarService.luau` | Equipe de rua e carro |
 | `server/WorldBuilder.luau` | Cidade e prédios |
+| `server/DdosService.luau` | Ataque DDoS: força, efeito na rede, rastreio (whois), denúncia, anti-DDoS e RTBH |
+| `server/LojaRobux.luau` | Pacotes de dinheiro por Robux (ProcessReceipt) e Passe VIP (fachada e uniforme) |
+| `client/Guerra.client.luau` | Tela Guerra (tecla K): ataque, defesa e loja |
 | `client/Hud.client.luau` | HUD, menu Provedor, tablet, resumo do dia, falência |
 | `client/NocScreens.client.luau` | Telas do NOC |
 | `client/Console.client.luau` | Console e terminal de compras |
+
+## Ataque DDoS na rede
+
+- O `DdosService` não mexe no grafo. A cada segundo ele calcula, para cada provedor, `Net.ddos[slot] = { level, extraMbps, bot, rtbh }`.
+- O `Net.tick` soma `extraMbps` na demanda do link (o link satura e os clientes ficam lentos) e aplica `level` às casas online: `slow`, `unstable` (motivo `ddos`) ou `offline` (motivo `ddos` ou `rtbh`). `bot = true` deixa lentas as casas de quem ataca.
+- A defesa vem da configuração do roteador: `RouterCli.shield(cfg)` lê `cfg.filter`, `cfg.raw`, `cfg.addressList` e `cfg.settings` e devolve o que está ligado (syncookies, limite de SYN, lista negra, filtro de DNS amplificado, DNS fechado na WAN).
+- O console mostra o ataque pelo `env` do roteador: `torch`, `connections`, `dynamicLists` e `cpuLoad` vêm de `Ddos.routerEnv(P)`. O `whois` do PC do NOC chama `Ddos.whois(P, ip)`, que também registra a prova.
+- Cada provedor tem um bloco público fictício `45.170.(80+slot).0/24` e o AS `263800+slot`.

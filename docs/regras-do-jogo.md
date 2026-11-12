@@ -106,3 +106,41 @@ Prefeitura (casa 25), Escola (26), Delegacia (27) e Hospital (28), na CTO G. Val
 | Escola | 200 | 6h |
 | Delegacia | 250 | 3h |
 | Hospital | 400 | 2h |
+
+## Guerra dos provedores: ataque DDoS
+
+Combinado com o Caio em 12/11/2026. Os números ficam em `Config.Ddos`.
+
+- **Quem ataca:** só o dono do provedor, pela tela Guerra (tecla K, aba Ataque). Provedor no prazo de implantação (3 dias) não ataca nem é atacado.
+- **Força:** cada cliente online de quem ataca vira um bot (mínimo 3). Prédio público não entra.
+- **Tipos:**
+  - **SYN flood:** 20 mil pacotes/s por bot contra um roteador que aguenta 150 mil sem proteção. Carga ≥ 100%: clientes da vítima fora do ar; ≥ 50%: instáveis; ≥ 25%: lentos.
+  - **Volumétrico (amplificação DNS):** 5 Mbps por bot vezes a amplificação (4x da internet + 4x por roteador da cidade com DNS aberto na WAN). Sem o Amplificador de tráfego, o ataque não passa de 95% do link da vítima (lento e instável). Acima de 1,5x o link, os clientes caem.
+- **Duração:** de 1 a 8 horas de jogo. O teto é 8h porque o cliente cancela com 12h seguidas sem internet.
+- **Custo para quem ataca:** os bots ficam com internet lenta durante o ataque (o humor cai), a botnet fica 12h em recarga e o ataque pode ser denunciado. Servidor C2 dobra a força.
+- **Refletores:** cada roteador com DNS aberto na WAN gasta 30 Mbps do próprio link durante um ataque volumétrico de outro provedor.
+- **Fim do ataque:** acaba o tempo, o atacante para, a vítima pede blackhole, os bots ficam sem internet, ou a vítima segura tudo por 30 minutos de jogo (a botnet desiste). Depois, a vítima fica 12h protegida.
+- **Defesas e quanto deixam passar** (multiplicam entre si):
+  - `tcp-syncookies=yes`: 50% do SYN flood.
+  - Limite de conexões (`connection-limit` com `tcp-flags=syn`, ou a cadeia `detect-ddos` com `dst-limit`): 30%.
+  - Lista negra com drop na tabela raw (automática pela `detect-ddos` ou com o bloco do atacante numa address-list): 30%.
+  - Firewall dedicado (R$ 30.000): 10% do SYN flood.
+  - Filtro `udp src-port=53` na raw: tira a instabilidade do volumétrico, mas não esvazia o link.
+  - Appliance de scrubbing (R$ 60.000): 20% do volumétrico.
+  - Anti-DDoS da operadora (R$ 400 de ativação + R$ 400 por dia): 5% de qualquer ataque, e manda o relatório da origem.
+  - Blackhole (RTBH): grátis, encerra o ataque na hora, mas o IP da vítima fica 1h fora do ar.
+- **Armadilhas reais:** regra que descarta `src-port=53` sem exceção para os DNS do roteador deixa todos os clientes Sem DNS. Regra que fecha `dst-port=53` sem `in-interface=ether1` fecha o DNS para os clientes.
+- **Rastreio:** no SYN flood, o `whois` no PC do NOC de um IP visto no `/tool torch` registra a prova. No volumétrico, o torch mostra só refletores; a origem vem no relatório da operadora (anti-DDoS ou blackhole).
+- **Denúncia:** balcão de ocorrências na frente da Delegacia (casa 27), em até 24h de jogo. O atacante paga R$ 3.000 de multa e perde 1 estrela; a vítima recebe R$ 1.500.
+- **Reputação:** quem segura o ataque (prejudicado menos de 25% do tempo) ganha +0,3 estrela. O ajuste volta a zero aos poucos (0,25 por dia).
+- **Equipamentos de guerra** (R$ do jogo, defesa mais barata que ataque): Firewall MikroTik CCR2216 R$ 30.000, Appliance Huawei AntiDDoS8000 R$ 60.000, Servidor C2 R$ 45.000, Amplificador de tráfego R$ 80.000. Ficam com o provedor enquanto ele existir.
+
+## Loja com Robux
+
+Combinado com o Caio em 12/11/2026. Os valores e IDs ficam em `Config.Robux`.
+
+- **Pacotes de dinheiro do jogo** (Developer Products, podem ser comprados várias vezes): 49 Robux = R$ 10.000, 149 = R$ 35.000, 399 = R$ 100.000, 999 = R$ 300.000.
+- O dinheiro vai para o caixa do provedor de quem comprou. Sem provedor, vai para a carteira do jogador. Vale para a partida (o jogo não guarda progresso).
+- **Passe VIP** (Game Pass, 199 Robux): só visual. Fachada dourada no prédio enquanto alguém com o passe estiver na equipe, e uniforme VIP. Não dá vantagem.
+- Muito difícil sem Robux, mas não impossível: um provedor bem tocado lucra algo como R$ 1.000 a R$ 2.500 por dia de jogo.
+- Enquanto o ID do produto for 0 no `Config`, o item aparece como "Em breve" e não vende.

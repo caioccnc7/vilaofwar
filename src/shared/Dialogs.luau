@@ -21,6 +21,12 @@ Dialogs.Bubble = {
 		"Ontem foi um sufoco, hein.",
 		"Se cair de novo eu cancelo.",
 	},
+	ddos = {
+		"Disseram no grupo que derrubaram o provedor de propósito!",
+		"Ataque hacker no provedor? Só faltava essa.",
+		"O jogo online deu ping de 900 e caiu.",
+		"Meu sobrinho falou que é DDoS. Sei lá o que é isso.",
+	},
 	slow = {
 		"O vídeo tá travando de novo...",
 		"Tá lento demais pra hora do jogo.",
@@ -115,6 +121,7 @@ Dialogs.Signs = {
 
 -- Fala longa quando o jogador conversa (ProximityPrompt).
 Dialogs.Talk = {
+	ddos = "Tá tudo travando. O pessoal do bairro diz que o provedor tá sofrendo ataque. Se não resolverem logo eu procuro outro.",
 	online = "Por aqui tá tudo funcionando. Obrigado pelo serviço!",
 	slow = "Tá conectando, mas tá muito lento, principalmente agora. Parece que todo mundo usa ao mesmo tempo.",
 	nodns = "O celular mostra o Wi-Fi conectado, mas nenhum site abre. Esquisito, né?",

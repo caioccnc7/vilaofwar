@@ -208,6 +208,34 @@ function Providers.open(player: Player, slot: number?, name: any): any
 	return P
 end
 
+-- Só para testes (FibraTeste "rival"): provedor sem dono num lote, para testar a
+-- disputa e a guerra com um jogador só no Studio.
+function Providers.openTest(slot: number, name: string): any
+	if Providers.slots[slot] then
+		return nil
+	end
+	nextId += 1
+	local P = {
+		id = nextId,
+		slot = slot,
+		name = name,
+		price = Config.DailyFeePerCustomer,
+		owner = nil,
+		partners = {} :: { Player },
+		isp = World.buildIsp(slot),
+		folder = slotFolder(slot),
+		closed = false,
+	}
+	Providers.slots[slot] = P
+	if Providers.onOpen then
+		Providers.onOpen(P)
+	end
+	P.game.money = Config.StartMoney
+	P.game.publish()
+	publishTeam(P)
+	return P
+end
+
 -- Entra como sócio de um provedor que já existe.
 function Providers.join(player: Player, slot: number): any
 	local P = Providers.slots[slot]

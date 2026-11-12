@@ -40,6 +40,16 @@ Remotes.ErpAction = event("ErpAction") -- cliente -> servidor: abrir, agendar, c
 Remotes.BidAction = event("BidAction") -- cliente -> servidor: proposta (ou retirada) numa licitação
 Remotes.BidOpen = event("BidOpen") -- servidor -> cliente: abre a tela das licitações (mural da Prefeitura)
 
+Remotes.GuerraAction = event("GuerraAction") -- cliente -> servidor: atacar, parar, comprar equipamento, anti-DDoS, RTBH, Robux
+
+local guerraState = folder:FindFirstChild("GuerraState")
+if not guerraState then
+	guerraState = Instance.new("RemoteFunction")
+	guerraState.Name = "GuerraState"
+	guerraState.Parent = folder
+end
+Remotes.GuerraState = guerraState :: RemoteFunction -- cliente -> servidor: dados da tela Guerra (ataque, defesa e loja)
+
 local fn = folder:FindFirstChild("ConsoleCommand")
 if not fn then
 	fn = Instance.new("RemoteFunction")

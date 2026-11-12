@@ -74,6 +74,22 @@ F:Invoke("ir", 25)               -- leva o 1º jogador até a casa (ou prédio p
 
 Testado em 10/11/2026 com 1 jogador. Falta testar com 2+ jogadores e no simulador de celular.
 
+## Roteiro do DDoS e da loja (1 jogador, dois provedores)
+
+Os comandos de teste valem para o alvo (`alvo N`). `rival N` abre um provedor sem dono no lote N, para ter dois provedores com um jogador só.
+
+1. `rival 2`, `alvo 2`, `rack`. Depois `lote 1`, `rack` e `kit` (o alvo passa a ser o prédio 1).
+2. `ddos "2 syn 3 10"`: o prédio 1 ataca o 2 com 10 bots de teste por 3h. `ataques` mostra kpps, carga e efeito (carga 1,33 = fora do ar). Alarme "CPU do roteador alta" no NOC do prédio 2.
+3. `alvo 2` e `roteador "/tool torch interface=ether1"`: linhas tcp vindas de 45.170.81.x. `roteador "/ip settings set tcp-syncookies=yes"` e `ataques`: a carga cai pela metade.
+4. `roteador "/ip firewall filter add chain=input protocol=tcp tcp-flags=syn connection-limit=100,32 action=drop"`: carga cai para 0,2 e o efeito some. Em 30 min de jogo a botnet desiste.
+5. `ddos "1 dns 2 10"` (prédio 2 ataca o 1). Com o DNS aberto, o efeito é "unstable". A regra raw com `src-port=53` sem exceção derruba o DNS (casas "Sem DNS"); com `src-address-list=!dns-confiaveis` e a lista certa, o DNS volta e o efeito vira "slow".
+6. `guerra "amp"` no prédio 2 e de novo `ddos "1 dns 2 30"`: acima de 1,5x o link, as casas caem. Tecla K > Defesa > Pedir blackhole: o ataque para, chega o relatório com a origem e as casas ficam 1h fora.
+7. Denúncia: vá até a Delegacia (`ir 27`) e aperte E no balcão de ocorrências. O atacante paga a multa e perde reputação.
+8. Loja: `robux "reforco"` põe R$ 10.000 no caixa. `vip` liga o Passe VIP (fachada dourada em até 5 s e colete no personagem depois de renascer).
+9. Tecla K: confira as três abas, os ✔/✘ das defesas e o botão Loja. Repita no Device Simulator (iPhone XR).
+
+Com IDs reais em `Config.Robux`, teste a compra de verdade no Studio (o Roblox simula a compra sem cobrar).
+
 ## Roteiro com 2 jogadores (ainda pendente)
 
 No Studio, use Teste > Servidor e clientes com 2 jogadores, ou entre com duas contas.

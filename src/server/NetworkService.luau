@@ -20,6 +20,9 @@ Net.houses = {} -- por índice: { house, onuId, edgeId, contract, slot, price, c
 
 -- Dados de rede de cada provedor (por prédio): link, tráfego e alarmes
 Net.bySlot = {}
+-- efeito dos ataques DDoS neste segundo, por provedor: { level = "slow"|"unstable"|"offline"?,
+-- extraMbps = tráfego de ataque no link, bot = clientes viraram bots }. Escrito pelo DdosService.
+Net.ddos = {} :: { [number]: any }
 for slot = 1, #CityMap.Lots do
 	Net.bySlot[slot] = { upstreamMbps = 0, trafficMbps = 0, demandMbps = 0, utilization = 0, alarms = {} }
 end
@@ -723,6 +726,8 @@ function Net.reasonText(index: number): string
 		olt = "OLT fora do ar",
 		los = "sem luz da OLT",
 		lowsignal = "sinal muito baixo",
+		ddos = "ataque DDoS no provedor (rua sem defeito)",
+		rtbh = "IP do provedor em blackhole na operadora",
 	}
 	return AlarmTextLocal[h.reason] or (Config.StatusLabels[h.status] or h.status)
 end
@@ -1148,6 +1153,8 @@ local AlarmText = {
 	unauth = "ONT não autorizada na OLT",
 	noservice = "ONT sem service-port",
 	olt = "OLT fora do ar",
+	ddos = "Ataque DDoS (link ou roteador sobrecarregado)",
+	rtbh = "IP público em blackhole na operadora",
 }
 
 -- Provedor que o morador escolheria agora: o mais barato que ele aceita pagar.
@@ -1197,6 +1204,11 @@ function Net.tick(dt: number)
 			h.choice = choiceOf(h) -- prédio público: quem escolhe é a licitação
 		end
 	end
+	for slot, e in Net.ddos do
+		if e.extraMbps and e.extraMbps > 0 then
+			demand[slot] = (demand[slot] or 0) + e.extraMbps
+		end
+	end
 	local saturatedBy = {}
 	for slot, d in Net.bySlot do
 		d.demandMbps = demand[slot] or 0
@@ -1232,6 +1244,19 @@ function Net.tick(dt: number)
 			if h.status == "online" and saturatedBy[h.slot] then
 				h.status = "slow"
 			end
+			-- ataque DDoS: a vítima fica lenta, instável ou fora do ar; os bots do atacante ficam lentos
+			local e = Net.ddos[h.slot]
+			if e and (h.status == "online" or h.status == "slow" or h.status == "unstable") then
+				if e.level == "offline" then
+					h.status = "offline"
+					h.reason = if e.rtbh then "rtbh" else "ddos"
+				elseif e.level == "unstable" and h.status ~= "unstable" then
+					h.status = "unstable"
+					h.reason = "ddos"
+				elseif (e.level == "slow" or e.bot) and h.status == "online" then
+					h.status = "slow"
+				end
+			end
 		end
 
 		-- LED da ONU na casa
@@ -1248,6 +1273,8 @@ function Net.tick(dt: number)
 		if old ~= h.status and old ~= "nocontract" and h.status ~= "nocontract" then
 			if h.status == "offline" or h.status == "nodns" then
 				queueAlarm(index, AlarmText[h.reason] or "Offline", "critical")
+			elseif h.status == "unstable" and h.reason == "ddos" then
+				queueAlarm(index, "Instável: ataque DDoS", "warning")
 			elseif h.status == "unstable" then
 				Net.addAlarm(h.slot, "ONU " .. index, string.format("Sinal baixo (%.1f dBm)", h.signal or 0), "warning")
 			elseif h.status == "online" and (old == "offline" or old == "unstable" or old == "nodns") then

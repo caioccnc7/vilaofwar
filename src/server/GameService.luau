@@ -49,6 +49,7 @@ function Game.newProvider(P: any): any
 	g.P = P
 	g.money = 0
 	g.reputation = 3.5
+	g.repAdjust = 0 -- estrelas a mais ou a menos (DDoS: denúncia e mitigação rápida)
 	g.linkContracted = false
 	g.phase = "implantacao" -- implantacao | operacao | protesto | falencia
 	g.bankrupt = false
@@ -377,7 +378,7 @@ function Game.newProvider(P: any): any
 		-- satisfação de quem é cliente ou escolheu este provedor
 		local avg = residents.averageMood(P.slot)
 		if avg then
-			g.reputation = math.clamp(avg / 20, 0, 5)
+			g.reputation = math.clamp(avg / 20 + (g.repAdjust or 0), 0, 5)
 		end
 		folder:SetAttribute("Mood", avg or -1)
 

@@ -262,6 +262,10 @@ local function situation(r: any): string
 		return if late then "waiting_late" else "waiting"
 	end
 	local s = h.status
+	-- ataque DDoS no provedor: o morador comenta (termômetro da guerra)
+	if (s == "offline" or s == "unstable") and (h.reason == "ddos" or h.reason == "rtbh") then
+		return "ddos"
+	end
 	if s == "online" then
 		if r.mood >= 70 then
 			return "online_happy"

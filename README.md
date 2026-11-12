@@ -23,6 +23,8 @@ A vila começa **sem internet**. Os jogadores contratam o link da operadora e co
   - ERP do provedor: ordens de serviço pedidas pelos moradores, agenda e fila dos técnicos no celular, atendente do balcão, receitas e despesas e estoque.
   - Equipe de técnicos NPC e carro da equipe.
   - Prazo de implantação, manifestação e falência.
+- **Guerra dos provedores** (tecla K). Ataque DDoS usando os clientes como bots (SYN flood ou amplificação DNS) e defesa com comandos reais do RouterOS (firewall filter, raw, address-list, torch), anti-DDoS e blackhole da operadora, rastreio por `whois` e denúncia na Delegacia.
+- **Loja com Robux.** Pacotes de dinheiro do jogo para a partida e Passe VIP só visual.
 - **Wiki dentro do jogo** (tecla J). É o guia prático de como jogar e é atualizada a cada funcionalidade nova.
 - **Celular.** As telas se ajustam e têm botões na tela.
 

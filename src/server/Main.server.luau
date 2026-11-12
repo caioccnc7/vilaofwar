@@ -16,6 +16,8 @@ local TechModule = require(script.Parent.TechService)
 local ErpModule = require(script.Parent.ErpService)
 local OltCli = require(script.Parent.Cli.OltCli)
 local Bids = require(script.Parent.LicitacaoService)
+local Ddos = require(script.Parent.DdosService)
+local Loja = require(script.Parent.LojaRobux)
 
 local world = World.build()
 
@@ -27,6 +29,8 @@ Director.init(Net)
 RackModule.start()
 ErpModule.start()
 Bids.init(Net, Game)
+Loja.start()
+Ddos.start(Loja)
 
 -- Fases de cada provedor: prazo de implantação, manifestação e falência
 local function phaseHandler(P: any)
@@ -118,6 +122,14 @@ Providers.start(world)
 --   game.ServerStorage.FibraTeste:Invoke("atestado", 0)        muda quantos clientes online o atestado pede
 --   game.ServerStorage.FibraTeste:Invoke("sinal", 3)           caminho óptico da casa 3 até a OLT do provedor alvo
 --   game.ServerStorage.FibraTeste:Invoke("ir", 25)             leva o 1º jogador até a casa (ou prédio público) N
+--   game.ServerStorage.FibraTeste:Invoke("rival", 2)             abre um provedor sem dono no lote 2 (para testar a guerra)
+--   game.ServerStorage.FibraTeste:Invoke("ddos", "2 syn 3 10")  o provedor alvo ataca o prédio 2 (syn|dns, 3h, 10 bots de teste)
+--   game.ServerStorage.FibraTeste:Invoke("fimddos")            encerra todos os ataques
+--   game.ServerStorage.FibraTeste:Invoke("ataques")            resumo dos ataques (força, efeito, rastreio)
+--   game.ServerStorage.FibraTeste:Invoke("guerra", "firewall") dá um equipamento de guerra ao provedor alvo (firewall, scrubber, c2, amp)
+--   game.ServerStorage.FibraTeste:Invoke("robux", "reforco")   simula a compra de um pacote pelo 1º jogador
+--   game.ServerStorage.FibraTeste:Invoke("vip")                dá o Passe VIP ao 1º jogador (só nesta sessão)
+--   game.ServerStorage.FibraTeste:Invoke("roteador", "/ip firewall filter print")   roda uma linha no roteador ativo
 local target = 1
 local function cur(): any
 	return Providers.slots[target] or Providers.list()[1]
@@ -298,6 +310,61 @@ Debug = {
 		local out = P.rack.runLine(dev, dev.testSession, line)
 		return before .. line .. "\n" .. out
 	end,
+	-- provedor sem dono no lote N (para testar a guerra com um jogador só)
+	rival = function(slot: number)
+		local P = Providers.openTest(slot, "Rival " .. tostring(slot))
+		return if P then "rival aberto no lote " .. slot else "lote ocupado"
+	end,
+	ddos = function(spec: string)
+		local A = cur()
+		local slot, kind, hours, bots = string.match(tostring(spec), "^(%d+)%s*(%a*)%s*(%d*)%s*(%d*)$")
+		local V = Providers.slots[tonumber(slot or "") or 0]
+		local a = Ddos.launch(A, V, if kind == "dns" then "dns" else "syn", tonumber(hours) or 2, nil, true, tonumber(bots))
+		return if a then "ataque #" .. a.id .. " contra " .. a.victimName else "não atacou"
+	end,
+	fimddos = function()
+		for _, a in Ddos.attacks do
+			Ddos.finish(a, "teste")
+		end
+		return "ataques encerrados"
+	end,
+	ataques = function()
+		local out = {}
+		for _, a in Ddos.attacks do
+			table.insert(out, string.format("#%d %s %s->%s %s bots=%s kpps=%s mbps=%s carga=%s efeito=%s rastreado=%s", a.id, a.kind, a.attackerName, a.victimName, a.status, tostring(a.bots), tostring(a.kpps), tostring(a.mbps and math.floor(a.mbps)), tostring(a.load and string.format("%.2f", a.load)), tostring(a.level), tostring(a.traced)))
+		end
+		return if #out > 0 then table.concat(out, " | ") else "nenhum ataque"
+	end,
+	guerra = function(key: string)
+		Ddos.sec(cur()).items[key] = true
+		return "item " .. tostring(key) .. " no provedor " .. cur().name
+	end,
+	robux = function(key: string)
+		local pl = Players:GetPlayers()[1]
+		for _, p in Config.Robux.Packs do
+			if p.key == key and pl then
+				Loja.grant(pl, p)
+				return "entregue: " .. p.name
+			end
+		end
+		return "pacotes: reforco, investidor, capital, operadora"
+	end,
+	vip = function()
+		local pl = Players:GetPlayers()[1]
+		if pl then
+			Loja.applyVip(pl)
+		end
+		return "VIP ligado"
+	end,
+	roteador = function(line: string)
+		local P = cur()
+		local dev = P.rack.activeOf("router")
+		if not dev then
+			return "sem roteador ativo"
+		end
+		dev.testSession = dev.testSession or { path = {} }
+		return P.rack.runLine(dev, dev.testSession, line)
+	end,
 	ativar = function(index: number)
 		local ok, msg = cur().erp.activate(index, "Teste")
 		return tostring(ok) .. " " .. msg
@@ -363,7 +430,7 @@ debugFn.Name = "FibraTeste"
 debugFn.OnInvoke = function(cmd: string, arg: any)
 	local f = Debug[cmd]
 	if not f then
-		return "comandos: abrir, lote, alvo, licitacao, proposta, resultado, licitacoes, ir, incidente, hora, dinheiro, kit, semnet, tecnico, carro, romper, equipe, prazo, humor, link, escolhas, atendente, pedido, os, envelhecer"
+		return "comandos: abrir, lote, alvo, licitacao, proposta, resultado, licitacoes, ir, incidente, hora, dinheiro, kit, semnet, tecnico, carro, romper, equipe, prazo, humor, link, escolhas, atendente, pedido, os, envelhecer, rival, ddos, fimddos, ataques, guerra, robux, vip, roteador"
 	end
 	return f(arg) or "ok"
 end
@@ -390,6 +457,7 @@ while true do
 	for _, P in Providers.list() do
 		P.rack.apply()
 	end
+	Ddos.tick(dt) -- efeito dos ataques DDoS (o Net.tick aplica nas casas)
 	Net.tick(dt)
 	Residents.tick(dt)
 	Director.tick(dt)
@@ -398,7 +466,9 @@ while true do
 		P.game.tick(dt)
 		P.erp.tick(dt)
 	end
-	Game.tick(dt)
+	if Game.tick(dt) then
+		Ddos.newDay()
+	end
 
 	-- cada equipe vê no NOC só o próprio provedor (a rua aparece para todos)
 	local snaps = {}

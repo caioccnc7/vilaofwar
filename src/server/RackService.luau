@@ -17,6 +17,7 @@ local OltCli = require(script.Parent.Cli.OltCli)
 local Docs = require(script.Parent.Cli.Docs)
 local Shell = require(script.Parent.Cli.LinuxShell)
 local Providers = require(script.Parent.Providers)
+local Ddos = require(script.Parent.DdosService)
 local NetworkGraph = require(ReplicatedStorage.Shared.NetworkGraph)
 
 local RackModule = {}
@@ -641,7 +642,13 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 	local function runLine(dev: any, session: any, line: string): string
 		if dev.kind == "router" then
 			local arp, log = routerExtras(dev)
+			-- torch, conexões, CPU e address-list dinâmica mostram o ataque DDoS (se houver)
+			local dd = Ddos.routerEnv(P)
 			return RouterCli.run(dev.cfg, session, line, {
+				torch = dd.torch,
+				connections = dd.connections,
+				dynamicLists = dd.dynamicLists,
+				cpuLoad = dd.cpuLoad,
 				ifaces = routerIfaces(dev),
 				deadDns = Rack.deadDns,
 				uptime = uptime(dev),
@@ -790,6 +797,9 @@ function RackModule.new(P: any, worldData: any, netService: any): any
 			man = { routeros = Docs.Router, ma5800 = Docs.Olt },
 			time = clock,
 			dateLong = string.format("%s Nov %2d %s -03 2026", WEEKDAYS[(day % 7) + 1], day, clock),
+			whois = function(ip: string?): string
+				return Ddos.whois(P, ip)
+			end,
 			deviceAt = function(ip: string): string?
 				local d = reachableAt(ip)
 				return d and d.kind

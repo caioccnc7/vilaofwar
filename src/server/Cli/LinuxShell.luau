@@ -32,7 +32,7 @@ local ReverseNames = {
 local COMMANDS = {
 	"alias", "apt", "cat", "cd", "clear", "date", "dig", "echo", "exit", "head", "help", "history", "host",
 	"hostname", "id", "ifconfig", "ip", "less", "logout", "ls", "man", "more", "nslookup", "ping", "pwd",
-	"screen", "ssh", "sudo", "tail", "telnet", "tracepath", "traceroute", "uname", "uptime", "whoami",
+	"screen", "ssh", "sudo", "tail", "telnet", "tracepath", "traceroute", "uname", "uptime", "whoami", "whois",
 }
 
 -- ---------------------------------------------------------------------------
@@ -610,7 +610,8 @@ local MiniMan = {
 	nslookup = "NSLOOKUP(1)                       BIND 9                      NSLOOKUP(1)\n\nNAME\n       nslookup - query Internet name servers\n\nSYNOPSIS\n       nslookup name [server]\n\nDESCRIPTION\n       Pergunta ao DNS o IP de um nome. Com server, pergunta direto àquele\n       servidor (ex.: nslookup google.com 8.8.8.8).",
 	dig = "DIG(1)                            BIND 9                           DIG(1)\n\nNAME\n       dig - DNS lookup utility\n\nSYNOPSIS\n       dig [@server] name [+short]",
 	screen = "SCREEN(1)                 General Commands Manual                SCREEN(1)\n\nNAME\n       screen - screen manager with VT100/ANSI terminal emulation\n\nSYNOPSIS\n       screen /dev/ttyUSB0 115200\n\nDESCRIPTION\n       Abre a porta serial do cabo de console (USB) a 115200 bauds.",
-	man = "MAN(1)                       Manual pager utils                       MAN(1)\n\nNAME\n       man - an interface to the system reference manuals\n\nSYNOPSIS\n       man page\n\nPáginas deste computador: routeros, ma5800, ping, ssh, telnet, ip, tracepath,\nnslookup, dig, screen, man",
+	whois = "WHOIS(1)                    Debian GNU/Linux                    WHOIS(1)\n\nNAME\n       whois - client for the whois directory service\n\nSYNOPSIS\n       whois IP | ASnúmero\n\nDESCRIPTION\n       Mostra quem é o dono de um IP ou de um sistema autônomo (AS) no\n       registro da LACNIC. Use com os IPs que o /tool torch do roteador mostrou\n       para descobrir de que provedor vem um ataque (ex.: whois 45.170.81.23).",
+	man = "MAN(1)                       Manual pager utils                       MAN(1)\n\nNAME\n       man - an interface to the system reference manuals\n\nSYNOPSIS\n       man page\n\nPáginas deste computador: routeros, ma5800, ping, ssh, telnet, ip, tracepath,\nnslookup, dig, whois, screen, man",
 }
 
 local function manPages(env: any): { string }
@@ -734,7 +735,7 @@ local HELP_TEXT = table.concat({
 	"",
 	"  arquivos   ls  cd  pwd  cat  less  head  tail  echo",
 	"  sistema    whoami  hostname  uname -a  uptime  date  history  clear  exit",
-	"  rede       ip a  ip r  ip neigh  ping  tracepath  nslookup  dig",
+	"  rede       ip a  ip r  ip neigh  ping  tracepath  nslookup  dig  whois",
 	"  acesso     ssh admin@borda-vila   telnet olt-vila",
 	"  manuais    man routeros   man ma5800   cat ficha-do-link.txt",
 }, "\n")
@@ -860,6 +861,16 @@ function Shell.run(st: any, env: any, line: string): any
 		return { output = tracepath(env, args) }
 	elseif cmd == "nslookup" then
 		return { output = nslookup(env, args) }
+	elseif cmd == "whois" then
+		-- consulta o dono de um IP ou AS (registro da LACNIC): rastreia a origem de um ataque
+		if not env.whois then
+			return { output = "whois: comando indisponível" }
+		end
+		local n = env.net()
+		if not (n.gw and n.routeOk and n.natOk) then
+			return { output = "whois: connect: Network is unreachable (o PC precisa de internet: confira o roteador)" }
+		end
+		return { output = env.whois(args[1]) }
 	elseif cmd == "dig" then
 		return { output = dig(env, args) }
 	elseif cmd == "host" then

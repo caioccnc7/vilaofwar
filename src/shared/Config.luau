@@ -232,6 +232,69 @@ Config.FiberColors = {
 	Color3.fromRGB(0, 200, 90),
 }
 
+-- Ataque DDoS entre provedores (DdosService). Aprovado pelo Caio em 12/11/2026.
+-- A força vem dos clientes online de quem ataca (cada ONU vira um bot). Durações em
+-- horas de jogo. Valores sugeridos, para balancear depois.
+Config.Ddos = {
+	MinHours = 1,
+	MaxHours = 8, -- teto: o cliente cancela com 12h sem internet, então 1 dia derrubaria tudo
+	DefaultHours = 2,
+	MinBots = 3, -- clientes online para conseguir atacar
+	CooldownHours = 12, -- quem atacou espera isso para atacar de novo
+	VictimShieldHours = 12, -- quem foi atacado fica protegido por isso depois do ataque
+	GiveUpMinutes = 30, -- ataque 100% mitigado por esse tempo: a botnet desiste
+	-- SYN flood: esgota a CPU do roteador da vítima
+	SynKppsPerBot = 20, -- mil pacotes por segundo por bot
+	RouterSynKpps = 150, -- o que o roteador aguenta sem proteção
+	-- Volumétrico (UDP / amplificação DNS): entope o link da vítima
+	UdpMbpsPerBot = 5,
+	BaseAmp = 4, -- amplificação dos servidores DNS abertos da internet
+	AmpPerOpenResolver = 4, -- cada roteador da cidade com DNS aberto para a WAN amplifica mais
+	CapWithoutAmp = 0.95, -- sem o Amplificador, o ataque não passa de 95% do link da vítima
+	DownAbove = 1.5, -- ataque acima de 1,5x o link derruba os clientes (perda de pacotes)
+	ReflectorMbps = 30, -- banda que cada refletor (DNS aberto) gasta durante o ataque
+	-- quanto cada defesa deixa passar (multiplica a força)
+	Shield = {
+		syncookies = 0.5,
+		synLimit = 0.3, -- connection-limit ou cadeia detect-ddos com dst-limit
+		blacklist = 0.3, -- address-list dos atacantes com drop na tabela raw
+		firewall = 0.1, -- Firewall dedicado (item)
+		scrubber = 0.2, -- Appliance de scrubbing (item), só no volumétrico
+		antiDdos = 0.05, -- anti-DDoS da operadora
+	},
+	RtbhHours = 1, -- blackhole na operadora: o IP atacado fica fora do ar por esse tempo
+	AntiDdosFee = 400, -- ativação do anti-DDoS da operadora
+	AntiDdosDaily = 400, -- mensalidade (por dia de jogo)
+	Fine = 3000, -- multa da denúncia na Delegacia
+	Indemnity = 1500, -- parte da multa que vai para a vítima
+	ReportHours = 24, -- prazo para denunciar depois do ataque
+	RepPenalty = 1.0, -- estrelas que o atacante denunciado perde
+	RepBonus = 0.3, -- estrelas que a vítima ganha quando mitiga rápido
+	RepDecayPerDay = 0.25, -- o bônus ou a perda volta ao normal aos poucos
+	-- Equipamentos de guerra, vendidos em R$ do jogo (muito caros de propósito: o
+	-- atalho é comprar dinheiro do jogo com Robux). Defesa mais barata que ataque.
+	Items = {
+		{ key = "firewall", side = "defesa", name = "Firewall MikroTik CCR2216-1G-12XS-2XQ", price = 30000, info = "Firewall dedicado na frente do roteador. Absorve SYN flood quase sozinho (corta 90% da carga)." },
+		{ key = "scrubber", side = "defesa", name = "Appliance de scrubbing Huawei AntiDDoS8000", price = 60000, info = "Limpa ataque volumétrico sem depender da operadora (corta 80% do tráfego de ataque)." },
+		{ key = "c2", side = "ataque", name = "Servidor de comando da botnet (C2)", price = 45000, info = "Coordena os bots: dobra a força de qualquer ataque." },
+		{ key = "amp", side = "ataque", name = "Amplificador de tráfego", price = 80000, info = "Libera o ataque volumétrico acima do link da vítima. Sem ele, o ataque só deixa a internet lenta." },
+	},
+}
+
+-- Loja com Robux. Os IDs vêm do painel do Roblox (Creator Hub > Monetização).
+-- Enquanto o ID for 0, o item aparece como "em breve" e não vende.
+-- O dinheiro comprado vai para o caixa do provedor do jogador (ou para a carteira dele)
+-- e vale só para a partida (o jogo não guarda progresso entre servidores).
+Config.Robux = {
+	Packs = {
+		{ key = "reforco", name = "Caixa de reforço", robux = 49, money = 10000, productId = 0 },
+		{ key = "investidor", name = "Aporte de investidor", robux = 149, money = 35000, productId = 0 },
+		{ key = "capital", name = "Rodada de capital", robux = 399, money = 100000, productId = 0 },
+		{ key = "operadora", name = "Fundo da operadora", robux = 999, money = 300000, productId = 0 },
+	},
+	Vip = { name = "Passe VIP", robux = 199, gamePassId = 0, info = "Só visual: fachada dourada no prédio do seu provedor e uniforme VIP. Não dá vantagem no jogo." },
+}
+
 Config.ToolNames = {
 	PowerMeter = "Power Meter",
 	Fusion = "Máquina de Fusão",

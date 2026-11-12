@@ -20,7 +20,7 @@ local Wiki = {}
 
 Wiki.Title = "Wiki do Provedor · " .. Config.GameName
 
-Wiki.Categories = { "Começando", "A rede", "Na rua", "No provedor", "Equipamentos", "Gestão", "Novidades" }
+Wiki.Categories = { "Começando", "A rede", "Na rua", "No provedor", "Equipamentos", "Gestão", "Guerra", "Novidades" }
 
 local f = string.format
 
@@ -50,6 +50,27 @@ local ONU_DAYS = Config.Onu.MinAgeDays
 local BUILD = Config.Lots.BuildCost
 local BIDS = Config.Bids
 local NOBRE = Config.Nobre
+local DD = Config.Ddos
+local RBX = Config.Robux
+-- preço de um equipamento de guerra (Config.Ddos.Items)
+local function warItem(key: string): any
+	for _, it in DD.Items do
+		if it.key == key then
+			return it
+		end
+	end
+	return { name = key, price = 0, info = "" }
+end
+-- 300000 -> "300.000"
+local function money(n: number): string
+	local str = tostring(math.floor(n))
+	local out = ""
+	while #str > 3 do
+		out = "." .. string.sub(str, -3) .. out
+		str = string.sub(str, 1, -4)
+	end
+	return str .. out
+end
 
 Wiki.Pages = {
 	-- -----------------------------------------------------------------------
@@ -141,6 +162,7 @@ Wiki.Pages = {
 			"- <b>O</b>: ERP do provedor (ordens de serviço, equipe, receitas e despesas, estoque). Também abre no computador do balcão da recepção.",
 			"- <b>L</b>: licitações dos prédios públicos (Prefeitura, Escola, Delegacia e Hospital). Também abre no mural da Prefeitura.",
 			"- <b>P</b>: menu Provedor (construir num lote, entrar como sócio, nome, preço e aporte).",
+			"- <b>K</b>: Guerra dos provedores (atacar com DDoS, defender o seu provedor e a loja). O botão <b>Loja</b> abre direto na loja.",
 			"- <b>1, 2, 3</b>: equipa as ferramentas que o provedor já comprou (Power Meter, Máquina de Fusão, Notebook TI).",
 			"- <b>Clique</b> com o Notebook TI na mão: abre o terminal do notebook.",
 			"- <b>T</b>: conversar com um morador.",
@@ -172,7 +194,7 @@ Wiki.Pages = {
 			"",
 			"# No celular",
 			"- As janelas encolhem para caber na tela. Todas têm um <b>X</b> vermelho no canto de cima para fechar.",
-			"- Os botões <b>Wiki</b>, <b>Tablet</b>, <b>Provedor</b>, <b>ERP</b> e <b>Licitações</b> ficam no alto, à esquerda, no lugar das teclas J, M, P, O e L.",
+			"- Os botões <b>Wiki</b>, <b>Tablet</b>, <b>Provedor</b>, <b>ERP</b>, <b>Licitações</b> e <b>Guerra</b> ficam no alto, à esquerda, no lugar das teclas J, M, P, O, L e K. O botão <b>Loja</b> fica ao lado do Wiki.",
 			"- No menu do rack, toque nos botões das ações. Toque no <b>X</b> ou se afaste para fechar.",
 			"- Para falar com morador, abrir caixas e entrar no carro, toque no aviso que aparece sobre o objeto.",
 			"- No carro, o controle de andar acelera, freia e vira. O botão de pular sai do carro.",
@@ -478,6 +500,8 @@ Wiki.Pages = {
 			"- Mostra o caminho salto por salto. Para no 1 (_gateway) com !N: o roteador está sem rota. Só \"no reply\" depois do 1: falta o NAT.",
 			"$ nslookup google.com",
 			"- Testa só o DNS. Com <b>nslookup google.com 8.8.8.8</b> você pergunta direto ao Google e descobre se o problema é o DNS do roteador.",
+			"$ whois 45.170.81.23",
+			"- Mostra de quem é um IP (registro da LACNIC). Troque pelo IP que o /tool torch do roteador mostrou para rastrear a origem de um ataque DDoS.",
 			"",
 			"# Arquivos e manuais",
 			"$ cat LEIA-ME.txt",
@@ -659,6 +683,15 @@ Wiki.Pages = {
 			"- <b>Rota padrão</b>: diz por onde sai todo o tráfego da internet.",
 			"- <b>NAT masquerade</b>: os clientes usam IP privado (10.100.x.x) e o NAT troca pelo IP público.",
 			"- <b>DNS</b>: transforma nomes como google.com em IP. Use sempre 2 servidores.",
+			"",
+			"# Firewall (proteção contra DDoS)",
+			"$ /ip firewall filter print",
+			"$ /ip firewall raw print",
+			"$ /ip firewall address-list print",
+			"$ /ip settings print",
+			"- O passo a passo completo, com cada regra explicada, está na página <b>Defesa contra DDoS</b>.",
+			"$ /tool torch interface=ether1",
+			"- Mostra ao vivo quem está mandando tráfego pela porta da operadora, com IP e porta de origem.",
 		},
 	},
 	{
@@ -1015,6 +1048,135 @@ Wiki.Pages = {
 	},
 
 	-- -----------------------------------------------------------------------
+	-- -----------------------------------------------------------------------
+	{
+		id = "ddos-ataque",
+		category = "Guerra",
+		title = "Guerra: ataque DDoS",
+		body = {
+			"Na guerra dos provedores, um provedor pode usar os próprios clientes como bots para derrubar outro. Aperte <b>K</b> (ou o botão <b>Guerra</b>) e use a aba <b>Ataque</b>.",
+			"!Só no jogo. Na vida real, DDoS é crime (art. 266 do Código Penal) e dá cadeia.",
+			"",
+			"# Quem pode atacar",
+			"- Só o <b>dono</b> do provedor decide um ataque.",
+			f("- Provedor no prazo de implantação (os primeiros %d dias) não ataca nem é atacado.", OP.GraceDays),
+			f("- A força vem dos seus clientes online: cada ONU vira um bot. Precisa de pelo menos %d.", DD.MinBots),
+			f("- Duração de %d a %d horas de jogo. Um ataque por vez, e depois a botnet fica %dh em recarga.", DD.MinHours, DD.MaxHours, DD.CooldownHours),
+			f("- Quem acabou de ser atacado fica protegido por %dh.", DD.VictimShieldHours),
+			"",
+			"# Os dois tipos",
+			f("- <b>SYN flood</b>: os bots abrem milhares de conexões TCP pela metade no roteador da vítima. Cada bot manda %d mil pacotes por segundo e um roteador sem proteção aguenta %d mil. Passou disso, os clientes dela caem. Na metade, ficam instáveis.", DD.SynKppsPerBot, DD.RouterSynKpps),
+			f("- <b>Volumétrico (amplificação DNS)</b>: os bots mandam consultas DNS com o IP da vítima forjado para servidores DNS abertos, que respondem muito maior para ela. Cada bot vale %d Mbps vezes a amplificação (%dx da internet, mais %dx para cada roteador da cidade com DNS aberto na WAN).", DD.UdpMbpsPerBot, DD.BaseAmp, DD.AmpPerOpenResolver),
+			f("- Sem o <b>Amplificador de tráfego</b>, o volumétrico não passa de %d%% do link da vítima: deixa a internet lenta e instável, mas não derruba. Com ele, passando de %.1fx o link, os clientes dela ficam fora do ar.", math.floor(DD.CapWithoutAmp * 100), DD.DownAbove),
+			"",
+			"# Como atacar",
+			"- K, aba <b>Ataque</b>. A tela mostra quantos bots você tem e a força de cada tipo.",
+			"- Ajuste a duração com <b>-</b> e <b>+</b> e clique em <b>SYN flood</b> ou <b>Volumétrico DNS</b> no provedor alvo.",
+			"- Enquanto dura, a tela mostra o efeito na vítima. <b>Parar ataque</b> encerra antes.",
+			"",
+			"# O preço de atacar",
+			"- Seus clientes viram bots: a internet deles fica lenta durante todo o ataque e o humor cai.",
+			f("- O ataque acaba sozinho se a vítima segurar tudo por %d minutos de jogo, ou se ela pedir blackhole à operadora.", DD.GiveUpMinutes),
+			f("- O ataque é anônimo, mas a vítima pode rastrear a origem. Com a prova, ela denuncia na Delegacia: você paga multa de R$ %s e perde %.0f estrela de reputação.", money(DD.Fine), DD.RepPenalty),
+			"",
+			"# Equipamentos de ataque",
+			f("- <b>%s</b> (R$ %s): %s", warItem("c2").name, money(warItem("c2").price), warItem("c2").info),
+			f("- <b>%s</b> (R$ %s): %s", warItem("amp").name, money(warItem("amp").price), warItem("amp").info),
+			"> São caros de propósito. Dá para juntar o dinheiro jogando ou usar a Loja (Robux) como atalho.",
+		},
+	},
+	{
+		id = "ddos-defesa",
+		category = "Guerra",
+		title = "Defesa contra DDoS (passo a passo)",
+		body = {
+			"Os comandos são do RouterOS de verdade. Rode no console do roteador (E no rack, ou ssh admin@borda-vila no PC do NOC). A aba <b>Defesa</b> da tela Guerra (K) mostra com ✔ e ✘ o que o seu firewall já faz.",
+			"> Regra posta antes do ataque reduz ou anula o estrago. Posta durante, o ataque perde força na hora.",
+			"",
+			"# 1. Percebeu o ataque",
+			"- Alarme no NOC: <b>CPU do roteador alta</b> (SYN flood) ou <b>Pico de tráfego UDP na ether1</b> (volumétrico).",
+			"- Clientes lentos, instáveis ou fora do ar com a rua sem defeito. Os técnicos fecham a OS dizendo que é ataque.",
+			"",
+			"# 2. Descubra o tipo",
+			"$ /tool torch interface=ether1",
+			"- Muitas linhas <b>tcp</b> para a porta 443 ou 80, vindas de IPs do mesmo bloco (ex.: 45.170.81.x): <b>SYN flood</b>.",
+			"- Muitas linhas <b>udp</b> com SRC-PORT <b>53</b>: <b>amplificação DNS</b> (volumétrico).",
+			"$ /ip firewall connection print count-only",
+			"- Dezenas de milhares de conexões: o SYN flood está enchendo a tabela do roteador.",
+			"$ /system resource print",
+			"- cpu-load perto de 100%: o roteador não está dando conta.",
+			"",
+			"# 3a. SYN flood",
+			"$ /ip settings set tcp-syncookies=yes",
+			f("- O roteador responde o SYN sem guardar a conexão pela metade. Deixa passar só %d%% da carga.", math.floor(DD.Shield.syncookies * 100)),
+			"$ /ip firewall filter add chain=input protocol=tcp tcp-flags=syn connection-limit=100,32 action=drop comment=\"limite SYN\"",
+			"- Descarta quem abre mais de 100 conexões ao mesmo tempo. Em vez disso, dá para usar a receita do manual da MikroTik, que cria a lista negra sozinha:",
+			"$ /ip firewall filter add chain=input connection-state=new action=jump jump-target=detect-ddos",
+			"$ /ip firewall filter add chain=detect-ddos dst-limit=32,32,src-and-dst-addresses/10s action=return",
+			"$ /ip firewall filter add chain=detect-ddos action=add-src-to-address-list address-list=ddos-attackers address-list-timeout=10m",
+			"$ /ip firewall raw add chain=prerouting src-address-list=ddos-attackers action=drop",
+			"- Quem passa do limite entra na lista <b>ddos-attackers</b> e é descartado na tabela raw, antes de gastar CPU. Confira a lista:",
+			"$ /ip firewall address-list print",
+			"- Também vale bloquear à mão o bloco que apareceu no torch (troque 45.170.81.0 pelo bloco que você viu):",
+			"$ /ip firewall address-list add list=bloqueados address=45.170.81.0/24",
+			"$ /ip firewall raw add chain=prerouting src-address-list=bloqueados action=drop",
+			"",
+			"# 3b. Volumétrico (amplificação DNS)",
+			"- O tráfego chega com SRC-PORT 53, vindo de servidores DNS abertos (refletores). Eles não são o atacante.",
+			"- Primeiro proteja o roteador do lixo. Isso tira a instabilidade, mas a lentidão continua enquanto o link estiver cheio:",
+			"$ /ip firewall address-list add list=dns-confiaveis address=200.200.200.53",
+			"$ /ip firewall address-list add list=dns-confiaveis address=8.8.8.8",
+			"$ /ip firewall raw add chain=prerouting in-interface=ether1 protocol=udp src-port=53 src-address-list=!dns-confiaveis action=drop comment=\"DNS amplificado\"",
+			"!Sem a exceção !dns-confiaveis, a regra descarta também as respostas dos seus DNS e todos os clientes ficam Sem DNS.",
+			"- Com o link cheio, firewall não resolve, igual na vida real: o lixo já ocupou o cabo antes de chegar no roteador. Saídas: anti-DDoS da operadora, blackhole, o Appliance de scrubbing ou mais link no terminal de compras.",
+			"",
+			"# 4. A operadora (K, aba Defesa)",
+			f("- <b>Anti-DDoS</b>: a operadora limpa o tráfego antes do seu link (corta %d%%) e manda o relatório com a origem. Ativação R$ %s e R$ %s por dia. Contratado antes, o ataque nem chega.", math.floor((1 - DD.Shield.antiDdos) * 100), money(DD.AntiDdosFee), money(DD.AntiDdosDaily)),
+			f("- <b>Blackhole (RTBH)</b>: grátis. A operadora descarta tudo o que vai para o seu IP público. O ataque para na hora, mas seus clientes ficam %dh de jogo sem internet. Também vem com o relatório da origem.", DD.RtbhHours),
+			"",
+			"# 5. Não seja refletor",
+			"- Se o DNS do seu roteador responde para a internet, os ataques volumétricos usam ele para amplificar. Isso gasta o seu link e deixa os seus clientes lentos. Feche a porta 53 só na WAN:",
+			"$ /ip firewall filter add chain=input in-interface=ether1 protocol=udp dst-port=53 action=drop comment=\"DNS fechado na WAN\"",
+			"!Sem in-interface=ether1 a regra fecha o DNS também para os seus clientes.",
+			"",
+			"# 6. Rastreie e denuncie",
+			"- <b>SYN flood</b>: copie um IP do torch e consulte no PC do NOC. O whois mostra o provedor dono do bloco e registra a prova.",
+			"$ whois 45.170.81.23",
+			"- <b>Volumétrico</b>: o torch só mostra os refletores. A origem vem no relatório da operadora (anti-DDoS ou blackhole).",
+			f("- Com a prova, vá ao balcão de <b>Ocorrências</b> na frente da Delegacia (casa 27) e aperte E em <b>Denunciar ataque DDoS</b>, em até %dh de jogo. O atacante paga R$ %s de multa e perde %.0f estrela; você recebe R$ %s de indenização.", DD.ReportHours, money(DD.Fine), DD.RepPenalty, money(DD.Indemnity)),
+			"",
+			"# Reputação",
+			f("- Segurou o ataque (clientes prejudicados menos de 25%% do tempo)? Ganha +%.1f estrela de reputação. O bônus e a perda voltam ao normal aos poucos, %.2f por dia.", DD.RepBonus, DD.RepDecayPerDay),
+			"",
+			"# Equipamentos de defesa",
+			f("- <b>%s</b> (R$ %s): %s", warItem("firewall").name, money(warItem("firewall").price), warItem("firewall").info),
+			f("- <b>%s</b> (R$ %s): %s", warItem("scrubber").name, money(warItem("scrubber").price), warItem("scrubber").info),
+		},
+	},
+	{
+		id = "loja-robux",
+		category = "Guerra",
+		title = "Loja (Robux) e Passe VIP",
+		body = {
+			"Botão <b>Loja</b> na tela ou K, aba <b>Loja (Robux)</b>. Tudo no jogo dá para comprar com o dinheiro ganho jogando; os Robux são um atalho.",
+			"",
+			"# Pacotes de dinheiro do jogo",
+			f("- <b>%s</b>: %d Robux = R$ %s", RBX.Packs[1].name, RBX.Packs[1].robux, money(RBX.Packs[1].money)),
+			f("- <b>%s</b>: %d Robux = R$ %s", RBX.Packs[2].name, RBX.Packs[2].robux, money(RBX.Packs[2].money)),
+			f("- <b>%s</b>: %d Robux = R$ %s", RBX.Packs[3].name, RBX.Packs[3].robux, money(RBX.Packs[3].money)),
+			f("- <b>%s</b>: %d Robux = R$ %s", RBX.Packs[4].name, RBX.Packs[4].robux, money(RBX.Packs[4].money)),
+			"- O dinheiro cai no caixa do seu provedor e a equipe é avisada. Sem provedor, vai para a sua carteira (para abrir um ou aportar como sócio).",
+			"!O dinheiro vale para a partida em que você comprou. O jogo não guarda progresso entre servidores.",
+			"",
+			"# Passe VIP",
+			f("- %d Robux. %s", RBX.Vip.robux, RBX.Vip.info),
+			"- A fachada fica dourada enquanto alguém com o passe estiver na equipe do provedor.",
+			"",
+			"# Onde gastar",
+			"- Equipamentos de guerra (K): firewall e scrubbing para se defender, servidor C2 e amplificador para atacar. A defesa é sempre mais barata que o ataque.",
+			"- Tudo o que já existia: rack, link, ferramentas, insumos, equipe e carro.",
+		},
+	},
 	{
 		id = "novidades",
 		category = "Novidades",
@@ -1025,6 +1187,19 @@ Wiki.Pages = {
 
 -- Registro de mudanças, mais novo primeiro. Toda funcionalidade nova entra aqui.
 Wiki.Changelog = {
+	{
+		date = "12/11/2026 · guerra dos provedores",
+		items = {
+			"Ataque DDoS entre provedores (tecla K ou botão Guerra): o dono usa os clientes online como bots. Dois tipos: SYN flood (derruba o roteador) e volumétrico com amplificação DNS (entope o link).",
+			f("Ataque de %d a %d horas de jogo. Provedor no prazo de implantação não ataca nem é atacado. Os bots de quem ataca ficam lentos, a botnet entra em recarga e a vítima fica protegida por um tempo.", DD.MinHours, DD.MaxHours),
+			"Defesa com comandos reais do RouterOS: /tool torch, /ip firewall filter, raw e address-list, /ip firewall connection print, /ip settings set tcp-syncookies=yes. Regra mal escrita derruba o DNS dos clientes, como na vida real.",
+			"Operadora: anti-DDoS pago por dia e blackhole (RTBH) grátis, que para o ataque mas derruba o seu IP por um tempo.",
+			"Rastreio e denúncia: whois no PC do NOC ou relatório da operadora mostram a origem. Com a prova, o balcão de ocorrências da Delegacia multa o atacante e tira reputação.",
+			"Equipamentos de guerra no jogo: firewall e scrubbing para defesa, servidor C2 e amplificador para ataque.",
+			"Loja com Robux: pacotes de dinheiro do jogo para a partida e Passe VIP só visual (fachada dourada e uniforme).",
+			"Moradores comentam quando o provedor está sob ataque.",
+		},
+	},
 	{
 		date = "10/11/2026 · OLT passo a passo",
 		items = {
